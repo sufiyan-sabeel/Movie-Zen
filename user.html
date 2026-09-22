@@ -1,0 +1,1996 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="description" content="MovieZen v1.0.0 — cinematic movie discovery & authorized streaming by Umaiz Sufiyan">
+<meta name="theme-color" content="#0B0C0E">
+<title>MovieZen — Discover Movies</title>
+
+<!--
+  ============================================================================
+  MovieZen v1.0.0 — User Panel (single-file app)
+  Creator: Umaiz Sufiyan
+  ----------------------------------------------------------------------------
+  FIREBASE SETUP INSTRUCTIONS
+  1. Create a Firebase project (or open your existing one).
+  2. Enable Authentication → Email/Password sign-in provider, and also enable the
+     Google sign-in provider (needed for the "Continue with Google" button).
+  3. Enable Realtime Database (not Firestore) in production mode, then set rules,
+     e.g.:
+       { "rules": { ".read": true, ".write": "auth != null" } }
+  4. Paste your firebaseConfig below (databaseURL is REQUIRED).
+  5. Open this file in a browser (or host it statically).
+
+  USAGE GUIDE
+  - Browse / search / filter movies, open details, play (in-app), favorite, rate.
+  - Ratings require login. Favorites are stored in localStorage (work offline).
+  - Report broken links → admin panel reviews them under Reports.
+  - Theme: Settings → Appearance (Dark / Light / System).
+  - If the library is empty, run seedDemoData() in the browser console once
+    (remove sample data before production).
+  ============================================================================
+-->
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" referrerpolicy="no-referrer">
+
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+
+<style>
+/* ============================= TOKENS ============================= */
+:root{
+  --bg:#0B0C0E; --surface:#121417; --elevated:#181B20; --card:#1D2025;
+  --border:#2A2E35; --text:#F5F5F5; --text2:#A7ABB2; --muted:#737982;
+  --accent:#E8A83E; --accent-hover:#F2BC5A; --accent-fg:#1A1105; --accent-ink:#E8A83E;
+  --success:#45D483; --error:#FF6B6B; --blue:#3B82F6; --blue-strong:#2563EB;
+  --green:#45D483;
+  --topbar-bg:rgba(11,12,14,.88);
+  --shadow-1:0 4px 24px rgba(0,0,0,.45);
+  --shadow-2:0 16px 48px rgba(0,0,0,.6);
+  --r-sm:8px; --r:12px; --r-card:16px; --r-lg:20px;
+  --header-h:64px; --bottom-h:64px;
+  --ease:cubic-bezier(.2,.7,.3,1);
+  --font:'Inter',system-ui,-apple-system,sans-serif;
+  --display:'Space Grotesk','Inter',sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,monospace;
+}
+html[data-theme="light"]{
+  --bg:#F4F5F7; --surface:#FFFFFF; --elevated:#FFFFFF; --card:#FFFFFF;
+  --border:#E3E6EB; --text:#14161A; --text2:#4C525C; --muted:#6E7681;
+  --accent:#E8A83E; --accent-hover:#F2BC5A; --accent-ink:#8A6418;
+  --success:#1E9E63; --error:#D64545;
+  --topbar-bg:rgba(255,255,255,.9);
+  --shadow-1:0 4px 24px rgba(20,22,26,.08);
+  --shadow-2:0 16px 48px rgba(20,22,26,.14);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+body{
+  font-family:var(--font);background:var(--bg);color:var(--text);
+  min-height:100dvh;line-height:1.55;-webkit-font-smoothing:antialiased;
+  padding-top:var(--header-h);
+}
+img{max-width:100%;display:block}
+button{font-family:inherit;color:inherit;cursor:pointer;background:none;border:none}
+a{color:inherit;text-decoration:none}
+input,textarea,select{font-family:inherit;font-size:16px}
+ul{list-style:none}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.hidden{display:none!important}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
+}
+
+/* ============================= LOADING SCREEN ============================= */
+#loading{
+  position:fixed;inset:0;z-index:1000;background:var(--bg);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;
+  transition:opacity .4s ease;
+}
+#loading.hide{opacity:0;pointer-events:none}
+.load-mark{display:flex;align-items:center;gap:12px}
+.load-mark i{font-size:34px;color:var(--accent)}
+.load-mark span{font-family:var(--display);font-size:28px;font-weight:700;letter-spacing:-.5px}
+.spinner{width:38px;height:38px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#loading p{color:var(--muted);font-size:13px;letter-spacing:.4px;text-transform:uppercase}
+
+/* ============================= TOAST ============================= */
+#toastHost{position:fixed;top:calc(var(--header-h) + 12px);left:50%;transform:translateX(-50%);z-index:1200;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none;width:min(92vw,420px)}
+.toast{
+  pointer-events:auto;display:flex;align-items:center;gap:10px;
+  background:var(--elevated);border:1px solid var(--border);border-radius:var(--r);
+  padding:12px 16px;box-shadow:var(--shadow-1);color:var(--text);font-size:14px;
+  animation:toastIn .25s var(--ease);max-width:100%;
+}
+.toast.success i{color:var(--success)}
+.toast.error i{color:var(--error)}
+.toast.info i{color:var(--blue)}
+.toast.out{animation:toastOut .25s var(--ease) forwards}
+@keyframes toastIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+@keyframes toastOut{to{opacity:0;transform:translateY(-8px)}}
+
+/* ============================= TOP HEADER ============================= */
+.topbar{
+  position:fixed;top:0;left:0;right:0;height:var(--header-h);z-index:100;
+  display:flex;align-items:center;gap:16px;padding:0 20px;
+  background:var(--topbar-bg);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--border);
+}
+.logo{display:flex;align-items:center;gap:9px;font-family:var(--display);font-weight:700;font-size:20px;letter-spacing:-.4px;white-space:nowrap}
+.logo i{color:var(--accent);font-size:20px}
+.logo .z{color:var(--accent)}
+.main-nav{display:none;align-items:center;gap:4px}
+.main-nav button{
+  padding:8px 14px;border-radius:var(--r-sm);color:var(--text2);font-size:14px;font-weight:500;
+  min-height:40px;transition:color .2s,background .2s;
+}
+.main-nav button:hover{color:var(--text);background:var(--elevated)}
+.main-nav button.active{color:var(--accent-ink)}
+.top-right{margin-left:auto;display:flex;align-items:center;gap:6px}
+.icon-btn{
+  width:44px;height:44px;display:grid;place-items:center;border-radius:var(--r-sm);
+  color:var(--text2);font-size:17px;transition:color .2s,background .2s;
+}
+.icon-btn:hover{color:var(--text);background:var(--elevated)}
+.avatar{
+  width:36px;height:36px;border-radius:50%;background:var(--accent);color:var(--accent-fg);
+  display:grid;place-items:center;font-weight:700;font-size:15px;flex-shrink:0;
+  border:2px solid transparent;transition:border-color .2s;
+}
+.avatar:hover{border-color:var(--accent-hover)}
+/* search in header */
+.header-search{position:relative;flex:1;max-width:520px;display:none}
+.header-search input{
+  width:100%;height:40px;background:var(--surface);border:1px solid var(--border);
+  border-radius:999px;padding:0 44px 0 18px;color:var(--text);font-size:14px;
+  transition:border-color .2s,box-shadow .2s;
+}
+.header-search input::placeholder{color:var(--muted)}
+.header-search input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(232,168,62,.18)}
+.header-search .s-icon{position:absolute;right:14px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:14px;pointer-events:none}
+.header-search .clear-btn{position:absolute;right:8px;top:50%;transform:translateY(-50%);width:28px;height:28px;border-radius:50%;display:none;place-items:center;color:var(--muted);font-size:12px}
+.header-search.has-q .s-icon{display:none}
+.header-search.has-q .clear-btn{display:grid}
+.menu-btn{display:grid}
+@media(min-width:1025px){
+  .main-nav{display:flex}
+  .header-search{display:block}
+  .menu-btn{display:none}
+}
+
+/* ============================= DRAWER (mobile menu) ============================= */
+.drawer-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200;opacity:0;pointer-events:none;transition:opacity .25s}
+.drawer-backdrop.open{opacity:1;pointer-events:auto}
+.drawer{
+  position:fixed;top:0;left:0;bottom:0;width:min(300px,85vw);z-index:210;
+  background:var(--surface);border-right:1px solid var(--border);
+  transform:translateX(-100%);transition:transform .3s var(--ease);
+  padding:24px 20px;display:flex;flex-direction:column;gap:8px;overflow-y:auto;
+}
+.drawer.open{transform:none}
+.drawer-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.drawer nav{display:flex;flex-direction:column;gap:2px}
+.drawer nav button{
+  display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:var(--r);
+  color:var(--text2);font-size:15px;font-weight:500;text-align:left;min-height:48px;
+  transition:background .2s,color .2s;
+}
+.drawer nav button i{width:20px;text-align:center;color:var(--muted)}
+.drawer nav button:hover,.drawer nav button.active{background:var(--elevated);color:var(--text)}
+.drawer nav button.active i{color:var(--accent)}
+.drawer .ver{margin-top:auto;padding-top:20px;color:var(--muted);font-family:var(--mono);font-size:12px}
+
+/* ============================= VIEWS ============================= */
+main{max-width:1440px;margin:0 auto;padding:0 20px 40px}
+@media(max-width:600px){main{padding:0 14px calc(var(--bottom-h) + 28px)}}
+@media(min-width:601px){main{padding-bottom:48px}}
+@media(max-width:1024px) and (min-width:601px){main{padding-left:24px;padding-right:24px}}
+.view{display:none}
+.view.active{display:block;animation:fadeIn .25s var(--ease)}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.section-head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin:40px 0 18px}
+.section-head h2{font-family:var(--display);font-size:22px;font-weight:700;letter-spacing:-.3px}
+.section-head .sub{color:var(--muted);font-size:13px;font-family:var(--mono)}
+
+/* ============================= HERO / 3D CAROUSEL ============================= */
+.hero{position:relative;margin-top:20px}
+.carousel{
+  position:relative;height:320px;perspective:1200px;overflow:hidden;
+  border-radius:var(--r-card);background:linear-gradient(180deg,var(--surface) 0%,var(--bg) 100%);
+}
+@media(min-width:1025px){.carousel{height:380px}}
+.stage{position:absolute;inset:0;transform-style:preserve-3d;transition:transform .7s var(--ease)}
+.slide{
+  position:absolute;top:50%;left:50%;width:200px;height:300px;margin:-150px 0 0 -100px;
+  border-radius:var(--r-card);overflow:hidden;background:var(--card);
+  border:1px solid var(--border);box-shadow:var(--shadow-1);
+  transition:transform .7s var(--ease),opacity .7s var(--ease),filter .7s var(--ease);
+  cursor:pointer;will-change:transform,opacity;
+}
+@media(min-width:768px){.slide{width:230px;height:345px;margin:-172px 0 0 -115px}}
+.slide img{width:100%;height:100%;object-fit:cover}
+.slide .slide-shade{position:absolute;inset:0;background:linear-gradient(180deg,transparent 40%,rgba(0,0,0,.85) 100%);opacity:0;transition:opacity .4s}
+.slide.is-active .slide-shade{opacity:1}
+.slide .slide-title{
+  position:absolute;left:12px;right:12px;bottom:14px;color:#fff;font-weight:600;font-size:15px;
+  text-align:center;opacity:0;transform:translateY(8px);transition:.4s var(--ease);
+  text-shadow:0 2px 8px rgba(0,0,0,.8);line-height:1.3;
+}
+.slide.is-active .slide-title{opacity:1;transform:none}
+.carousel-btn{
+  position:absolute;top:50%;transform:translateY(-50%);z-index:10;
+  width:44px;height:44px;border-radius:50%;background:rgba(18,20,23,.8);border:1px solid var(--border);
+  color:var(--text);display:grid;place-items:center;font-size:15px;
+  transition:background .2s,border-color .2s,transform .2s;backdrop-filter:blur(8px);
+}
+.carousel-btn:hover{background:var(--elevated);border-color:var(--accent)}
+.carousel-btn.prev{left:10px}
+.carousel-btn.next{right:10px}
+.carousel-btn:active{transform:translateY(-50%) scale(.94)}
+.dots{display:flex;justify-content:center;gap:8px;margin-top:14px}
+.dots button{width:8px;height:8px;border-radius:50%;background:var(--border);transition:.25s;position:relative}
+.dots button::after{content:"";position:absolute;inset:-8px}
+.dots button.active{background:var(--accent);width:22px;border-radius:999px}
+
+/* ============================= GENRE CHIPS ============================= */
+.chips{
+  display:flex;gap:8px;overflow-x:auto;padding:16px 2px 6px;margin:0 -2px;
+  scrollbar-width:none;-ms-overflow-style:none;
+}
+.chips::-webkit-scrollbar{display:none}
+.chip{
+  flex-shrink:0;padding:9px 18px;border-radius:999px;border:1px solid var(--border);
+  background:var(--surface);color:var(--text2);font-size:13.5px;font-weight:500;
+  min-height:40px;transition:.2s;white-space:nowrap;
+}
+.chip:hover{border-color:var(--muted);color:var(--text)}
+.chip.active{background:var(--accent);border-color:var(--accent);color:var(--accent-fg);font-weight:600}
+
+/* ============================= MOVIE GRID / CARDS ============================= */
+.grid{display:grid;gap:16px;grid-template-columns:repeat(2,1fr)}
+@media(min-width:768px){.grid{grid-template-columns:repeat(4,1fr)}}
+@media(min-width:1025px){.grid{grid-template-columns:repeat(5,1fr)}}
+@media(min-width:1441px){.grid{grid-template-columns:repeat(6,1fr)}}
+.mcard{
+  background:var(--card);border:1px solid var(--border);border-radius:var(--r-card);
+  overflow:hidden;cursor:pointer;transition:transform .2s var(--ease),box-shadow .2s var(--ease),border-color .2s;
+  display:flex;flex-direction:column;position:relative;
+}
+.mcard:hover{transform:translateY(-4px);box-shadow:var(--shadow-1);border-color:rgba(232,168,62,.35)}
+.mcard:active{transform:translateY(-1px) scale(.995)}
+.mcard .poster{position:relative;aspect-ratio:2/3;background:var(--elevated);overflow:hidden}
+.mcard .poster img{width:100%;height:100%;object-fit:cover;transition:transform .4s var(--ease)}
+.mcard:hover .poster img{transform:scale(1.05)}
+.mcard .fav-btn{
+  position:absolute;top:8px;right:8px;width:36px;height:36px;border-radius:50%;
+  background:rgba(11,12,14,.72);color:#fff;display:grid;place-items:center;font-size:14px;
+  opacity:0;transform:translateY(-4px);transition:.2s;backdrop-filter:blur(6px);
+}
+.mcard:hover .fav-btn,.mcard .fav-btn.on{opacity:1;transform:none}
+.mcard .fav-btn.on{color:var(--error)}
+.mcard .fav-btn:active{transform:scale(.9)}
+.mcard .play-hint{
+  position:absolute;inset:0;display:grid;place-items:center;opacity:0;transition:.2s;
+  background:rgba(11,12,14,.45);
+}
+.mcard:hover .play-hint{opacity:1}
+.mcard .play-hint span{width:52px;height:52px;border-radius:50%;background:rgba(232,168,62,.95);color:#1A1105;display:grid;place-items:center;font-size:18px;box-shadow:0 6px 20px rgba(0,0,0,.4)}
+.mcard .body{padding:12px 12px 14px;display:flex;flex-direction:column;gap:6px;flex:1}
+.mcard h3{font-size:14px;font-weight:600;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:2.7em}
+.mcard .meta{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12.5px;color:var(--muted);margin-top:auto}
+.mcard .genre-tag{color:var(--text2)}
+.rating{display:inline-flex;align-items:center;gap:4px;font-size:12.5px;color:var(--muted);white-space:nowrap}
+.rating i{color:var(--accent);font-size:11px}
+.rating b{color:var(--text);font-weight:600}
+
+/* skeleton */
+.skel{background:var(--card);border:1px solid var(--border);border-radius:var(--r-card);overflow:hidden}
+.skel .skel-p{aspect-ratio:2/3;background:linear-gradient(90deg,var(--elevated) 25%,var(--border) 50%,var(--elevated) 75%);background-size:200% 100%;animation:shimmer 1.4s infinite}
+.skel .skel-b{height:64px;background:linear-gradient(90deg,var(--elevated) 25%,var(--border) 50%,var(--elevated) 75%);background-size:200% 100%;animation:shimmer 1.4s infinite}
+@keyframes shimmer{to{background-position:-200% 0}}
+
+/* empty state */
+.empty{
+  grid-column:1/-1;text-align:center;padding:56px 20px;color:var(--muted);
+  display:flex;flex-direction:column;align-items:center;gap:14px;
+}
+.empty i{font-size:40px;color:var(--border)}
+.empty h3{font-family:var(--display);font-size:18px;color:var(--text2);font-weight:600}
+.empty p{font-size:14px;max-width:340px;line-height:1.6}
+.empty .btn{margin-top:6px}
+
+/* ============================= BUTTONS ============================= */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:9px;
+  min-height:46px;padding:0 22px;border-radius:var(--r);font-size:15px;font-weight:600;
+  transition:.2s;border:1px solid transparent;white-space:nowrap;
+}
+.btn:active{transform:scale(.98)}
+.btn-play{background:var(--blue);color:#fff}
+.btn-play:hover{background:var(--blue-strong)}
+.btn-download{background:rgba(69,212,131,.14);color:var(--success);border-color:rgba(69,212,131,.35)}
+.btn-download:hover{background:rgba(69,212,131,.24)}
+html[data-theme="light"] .btn-download{background:rgba(30,158,99,.12);color:#1E9E63}
+.btn-fav{background:var(--elevated);color:var(--text2);border-color:var(--border)}
+.btn-fav:hover{color:var(--text);border-color:var(--muted)}
+.btn-fav.on{color:var(--error);border-color:rgba(255,107,107,.4);background:rgba(255,107,107,.1)}
+.btn-report{background:var(--elevated);color:var(--text2);border-color:var(--border)}
+.btn-report:hover{color:var(--text);border-color:var(--muted)}
+.btn-accent{background:var(--accent);color:var(--accent-fg)}
+.btn-accent:hover{background:var(--accent-hover)}
+.btn-ghost{background:transparent;color:var(--text2);border-color:var(--border)}
+.btn-ghost:hover{color:var(--text);border-color:var(--muted)}
+.btn-danger{background:rgba(255,107,107,.12);color:var(--error);border-color:rgba(255,107,107,.35)}
+.btn-block{width:100%}
+.btn-sm{min-height:38px;padding:0 14px;font-size:13.5px;border-radius:var(--r-sm)}
+
+/* ============================= MODAL BASE ============================= */
+.overlay{
+  position:fixed;inset:0;z-index:300;background:rgba(4,5,6,.72);
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  display:flex;align-items:center;justify-content:center;padding:20px;
+  opacity:0;pointer-events:none;transition:opacity .25s var(--ease);
+}
+.overlay.open{opacity:1;pointer-events:auto}
+.modal{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
+  width:min(920px,100%);max-height:88dvh;overflow-y:auto;box-shadow:var(--shadow-2);
+  transform:translateY(16px) scale(.98);transition:transform .3s var(--ease);
+  position:relative;
+}
+.overlay.open .modal{transform:none}
+.modal .close-x{
+  position:absolute;top:14px;right:14px;z-index:5;width:40px;height:40px;border-radius:50%;
+  background:rgba(11,12,14,.6);color:#fff;display:grid;place-items:center;font-size:15px;
+  backdrop-filter:blur(6px);transition:.2s;border:1px solid rgba(255,255,255,.12);
+}
+.modal .close-x:hover{background:rgba(11,12,14,.85);transform:rotate(90deg)}
+html[data-theme="light"] .modal .close-x{background:rgba(20,22,26,.6)}
+
+/* ============================= MOVIE DETAIL MODAL ============================= */
+#detailModal .modal{width:min(880px,100%)}
+.detail-grid{display:grid;grid-template-columns:1fr;gap:0}
+@media(min-width:768px){.detail-grid{grid-template-columns:300px 1fr}}
+.detail-left{padding:32px 32px 0;position:relative}
+@media(min-width:768px){.detail-left{padding:32px 0 32px 32px}}
+.detail-poster{
+  border-radius:var(--r-card);overflow:hidden;background:var(--elevated);
+  aspect-ratio:2/3;max-width:240px;margin:0 auto;border:1px solid var(--border);
+}
+.detail-poster img{width:100%;height:100%;object-fit:cover}
+.detail-right{padding:24px 32px 32px;display:flex;flex-direction:column;gap:16px}
+@media(min-width:768px){.detail-right{padding:32px}}
+.detail-right h2{font-family:var(--display);font-size:26px;font-weight:700;letter-spacing:-.5px;line-height:1.2}
+.tag-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.tag{
+  display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:999px;
+  background:var(--elevated);border:1px solid var(--border);color:var(--text2);font-size:12.5px;font-weight:500;
+}
+.tag.gold{background:rgba(232,168,62,.14);border-color:rgba(232,168,62,.4);color:var(--accent-ink)}
+.detail-desc{color:var(--text2);font-size:15px;line-height:1.7}
+.rating-block{display:flex;flex-wrap:wrap;align-items:center;gap:16px;padding:14px 16px;background:var(--elevated);border:1px solid var(--border);border-radius:var(--r)}
+.avg-score{display:flex;align-items:baseline;gap:6px}
+.avg-score .num{font-family:var(--display);font-size:30px;font-weight:700;color:var(--text);line-height:1}
+.avg-score .max{color:var(--muted);font-size:14px}
+.avg-score .cnt{color:var(--muted);font-size:12.5px;display:block;margin-top:4px}
+.stars{display:flex;gap:2px}
+.stars button{width:34px;height:34px;display:grid;place-items:center;font-size:20px;color:var(--border);transition:.15s;border-radius:6px}
+.stars button i{transition:.15s}
+.stars button:hover,.stars button:hover ~ button{color:var(--accent)}
+.stars.hovering button{color:var(--border)}
+.stars.hovering button.lit{color:var(--accent)}
+.stars button.yours{color:var(--accent)}
+.stars .hint{color:var(--muted);font-size:12.5px;width:100%;margin-top:4px}
+.actions{display:flex;flex-wrap:wrap;gap:10px}
+.actions .btn{flex:1;min-width:140px}
+@media(max-width:480px){.actions .btn{min-width:calc(50% - 5px)}}
+
+/* video player */
+.player-wrap{position:relative;width:100%;aspect-ratio:16/9;background:#000;border-radius:var(--r-card);overflow:hidden;display:none;border:1px solid var(--border)}
+.player-wrap.on{display:block}
+.player-wrap iframe,.player-wrap video{position:absolute;inset:0;width:100%;height:100%;border:none}
+.player-wrap .player-close{
+  position:absolute;top:10px;right:10px;z-index:3;width:36px;height:36px;border-radius:50%;
+  background:rgba(0,0,0,.7);color:#fff;display:grid;place-items:center;border:1px solid rgba(255,255,255,.15);
+}
+.player-state{position:absolute;inset:0;display:grid;place-items:center;color:#fff;font-size:14px;gap:10px;background:#000}
+.player-state .spinner{border-top-color:var(--accent)}
+
+/* ============================= AUTH MODAL ============================= */
+#authModal .modal{width:min(440px,100%);padding:0;overflow:hidden}
+.auth-head{padding:32px 32px 0;text-align:center}
+.auth-head .logo{justify-content:center;font-size:24px}
+.auth-head p{color:var(--muted);font-size:14px;margin-top:8px}
+.tabs{display:flex;gap:0;margin:24px 32px 0;border-bottom:1px solid var(--border)}
+.tabs button{
+  flex:1;padding:12px 8px;font-size:14.5px;font-weight:600;color:var(--muted);
+  border-bottom:2px solid transparent;margin-bottom:-1px;transition:.2s;min-height:46px;
+}
+.tabs button.active{color:var(--text);border-bottom-color:var(--accent)}
+.auth-body{padding:24px 32px 32px}
+.field{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
+.field label{font-size:13px;font-weight:500;color:var(--text2)}
+.field input{
+  height:46px;background:var(--bg);border:1px solid var(--border);border-radius:var(--r);
+  padding:0 14px;color:var(--text);transition:border-color .2s,box-shadow .2s;
+}
+.field input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(232,168,62,.16)}
+.field input.err{border-color:var(--error)}
+.field .msg{font-size:12.5px;color:var(--error);min-height:0;display:none}
+.field input.err ~ .msg{display:block}
+.auth-body .btn{margin-top:6px}
+.auth-switch{text-align:center;margin-top:18px;color:var(--muted);font-size:14px}
+.auth-switch button{color:var(--accent-ink);font-weight:600}
+.auth-switch button:hover{text-decoration:underline}
+
+/* ============================= SETTINGS MODAL ============================= */
+#settingsModal .modal{width:min(560px,100%)}
+.settings-head{padding:28px 28px 0;display:flex;align-items:center;gap:14px}
+.settings-head .avatar{width:52px;height:52px;font-size:20px}
+.settings-head .who h3{font-family:var(--display);font-size:18px;font-weight:700}
+.settings-head .who p{color:var(--muted);font-size:13px}
+.settings-list{padding:22px 28px 28px;display:flex;flex-direction:column;gap:12px}
+.set-card{
+  display:flex;align-items:center;gap:16px;padding:16px;background:var(--elevated);
+  border:1px solid var(--border);border-radius:var(--r-card);
+}
+.set-card .ico{
+  width:44px;height:44px;border-radius:var(--r);background:var(--surface);border:1px solid var(--border);
+  display:grid;place-items:center;color:var(--accent);font-size:17px;flex-shrink:0;
+}
+.set-card .txt{flex:1;min-width:0}
+.set-card .txt h4{font-size:15px;font-weight:600}
+.set-card .txt p{font-size:13px;color:var(--muted);line-height:1.45}
+.set-card .act{flex-shrink:0;display:flex;align-items:center;gap:8px}
+.seg{display:flex;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);padding:3px;gap:2px}
+.seg button{padding:7px 13px;border-radius:6px;font-size:13px;font-weight:500;color:var(--muted);min-height:36px;transition:.2s}
+.seg button.active{background:var(--accent);color:var(--accent-fg);font-weight:600}
+.count-badge{
+  font-family:var(--mono);font-size:13px;background:var(--surface);border:1px solid var(--border);
+  padding:5px 11px;border-radius:999px;color:var(--text2);
+}
+.link-btn{color:var(--accent-ink);font-weight:600;font-size:13.5px;padding:8px 12px;min-height:36px;border-radius:var(--r-sm)}
+.link-btn:hover{background:var(--surface)}
+.link-btn.danger{color:var(--error)}
+.about{text-align:center;padding-top:6px;color:var(--muted);font-size:13px}
+.about .mono{font-family:var(--mono);font-size:12px;color:var(--border);margin-top:4px}
+html[data-theme="light"] .about .mono{color:var(--muted)}
+
+/* ============================= FAVORITES / SEARCH VIEW ============================= */
+.view-title{margin:24px 0 6px;font-family:var(--display);font-size:26px;font-weight:700;letter-spacing:-.5px}
+.view-sub{color:var(--muted);font-size:14px;margin-bottom:22px}
+.search-big{
+  display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-card);padding:4px 18px;margin-top:24px;min-height:56px;
+  transition:border-color .2s;
+}
+.search-big:focus-within{border-color:var(--accent)}
+.search-big i{color:var(--muted);font-size:17px}
+.search-big input{flex:1;border:none;background:none;color:var(--text);font-size:16px;min-width:0}
+.search-big input:focus{outline:none}
+.search-big input::placeholder{color:var(--muted)}
+
+/* ============================= BOTTOM NAV ============================= */
+.bottom-nav{
+  position:fixed;left:0;right:0;bottom:0;z-index:90;
+  display:flex;background:var(--topbar-bg);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border-top:1px solid var(--border);
+  padding-bottom:env(safe-area-inset-bottom,0);
+}
+.bottom-nav button{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+  min-height:var(--bottom-h);color:var(--muted);font-size:11px;font-weight:500;
+  transition:color .2s;position:relative;
+}
+.bottom-nav button i{font-size:19px;transition:transform .2s}
+.bottom-nav button.active{color:var(--accent)}
+.bottom-nav button.active i{transform:translateY(-1px)}
+.bottom-nav button .badge{
+  position:absolute;top:10px;right:calc(50% - 18px);min-width:16px;height:16px;padding:0 4px;
+  background:var(--error);color:#fff;font-size:10px;font-weight:700;border-radius:999px;
+  display:grid;place-items:center;
+}
+@media(min-width:1025px){.bottom-nav{display:none}}
+
+/* ============================= FOOTER ============================= */
+.site-foot{
+  text-align:center;padding:48px 20px 40px;color:var(--muted);font-size:13px;
+  border-top:1px solid var(--border);margin-top:48px;
+}
+.site-foot .mono{font-family:var(--mono);font-size:12px;color:var(--border);margin-top:6px}
+html[data-theme="light"] .site-foot .mono{color:var(--muted)}
+
+/* light-theme hero tweaks */
+html[data-theme="light"] .carousel{background:linear-gradient(180deg,#E9ECF1 0%,var(--bg) 100%)}
+html[data-theme="light"] .slide .slide-title{color:#fff}
+</style>
+</head>
+
+<body>
+
+<!-- ============================= LOADING ============================= -->
+<div id="loading" role="status" aria-live="polite">
+  <div class="load-mark"><i class="fa-solid fa-clapperboard"></i><span>Movie<span class="z">Zen</span></span></div>
+  <div class="spinner" aria-hidden="true"></div>
+  <p>Initializing your cinema…</p>
+</div>
+
+<!-- ============================= TOAST HOST ============================= -->
+<div id="toastHost" aria-live="polite"></div>
+
+<!-- ============================= HEADER ============================= -->
+<header class="topbar" role="banner">
+  <button class="icon-btn menu-btn" id="menuBtn" aria-label="Open menu" aria-expanded="false"><i class="fa-solid fa-bars"></i></button>
+  <a href="#" class="logo" id="logoHome" aria-label="MovieZen home">
+    <i class="fa-solid fa-clapperboard" aria-hidden="true"></i>Movie<span class="z">Zen</span>
+  </a>
+
+  <nav class="main-nav" aria-label="Primary">
+    <button class="active" data-nav="home">Discover</button>
+    <button data-nav="movies">Movies</button>
+    <button data-nav="genres">Genres</button>
+    <button data-nav="search">Search</button>
+  </nav>
+
+  <div class="header-search" id="headerSearch">
+    <label class="sr-only" for="globalSearch">Search movies</label>
+    <input id="globalSearch" type="search" placeholder="Search titles, genres…" autocomplete="off">
+    <i class="fa-solid fa-magnifying-glass s-icon" aria-hidden="true"></i>
+    <button class="clear-btn" id="clearSearch" aria-label="Clear search"><i class="fa-solid fa-xmark"></i></button>
+  </div>
+
+  <div class="top-right">
+    <button class="icon-btn" id="favTopBtn" aria-label="Favorites" title="Favorites"><i class="fa-solid fa-heart"></i></button>
+    <button class="icon-btn" id="themeQuickBtn" aria-label="Toggle theme" title="Toggle theme"><i class="fa-regular fa-moon"></i></button>
+    <button class="avatar" id="profileBtn" aria-label="Account" title="Account"><i class="fa-regular fa-user"></i></button>
+  </div>
+</header>
+
+<!-- ============================= DRAWER ============================= -->
+<div class="drawer-backdrop" id="drawerBackdrop"></div>
+<aside class="drawer" id="drawer" aria-label="Menu" aria-hidden="true">
+  <div class="drawer-head">
+    <span class="logo"><i class="fa-solid fa-clapperboard"></i>Movie<span class="z">Zen</span></span>
+    <button class="icon-btn" id="drawerClose" aria-label="Close menu"><i class="fa-solid fa-xmark"></i></button>
+  </div>
+  <nav>
+    <button data-nav="home"><i class="fa-solid fa-house"></i>Discover</button>
+    <button data-nav="movies"><i class="fa-solid fa-film"></i>Movies</button>
+    <button data-nav="genres"><i class="fa-solid fa-layer-group"></i>Genres</button>
+    <button data-nav="search"><i class="fa-solid fa-magnifying-glass"></i>Search</button>
+    <button data-nav="favorites"><i class="fa-solid fa-heart"></i>Favorites</button>
+    <button data-nav="settings"><i class="fa-solid fa-gear"></i>Settings</button>
+  </nav>
+  <p class="ver">MovieZen v1.0.0 · Umaiz Sufiyan</p>
+</aside>
+
+<!-- ============================= MAIN ============================= -->
+<main id="main">
+
+  <!-- HOME VIEW -->
+  <section class="view active" id="view-home" aria-label="Discover">
+    <!-- 3D carousel -->
+    <div class="hero">
+      <div class="carousel" id="carousel" aria-roledescription="carousel" aria-label="Featured movies">
+        <div class="stage" id="stage"></div>
+        <button class="carousel-btn prev" id="carPrev" aria-label="Previous movie"><i class="fa-solid fa-chevron-left"></i></button>
+        <button class="carousel-btn next" id="carNext" aria-label="Next movie"><i class="fa-solid fa-chevron-right"></i></button>
+      </div>
+      <div class="dots" id="carDots" role="tablist" aria-label="Carousel slides"></div>
+    </div>
+
+    <!-- genre chips (directly below carousel) -->
+    <div class="chips" id="chipsHome" role="tablist" aria-label="Genre filters"></div>
+
+    <div id="homeSections">
+      <div class="section-head"><h2>Latest Movies</h2><span class="sub" id="latestCount"></span></div>
+      <div class="grid" id="gridLatest" aria-busy="true"></div>
+
+      <div class="section-head"><h2>Trending</h2><span class="sub">Top rated</span></div>
+      <div class="grid" id="gridTrending"></div>
+
+      <div class="section-head"><h2>Recommended</h2><span class="sub">For you</span></div>
+      <div class="grid" id="gridRecommended"></div>
+    </div>
+  </section>
+
+  <!-- MOVIES / GENRE VIEW -->
+  <section class="view" id="view-movies" aria-label="All movies">
+    <h1 class="view-title">Movies</h1>
+    <p class="view-sub" id="moviesSub">Browse the full library</p>
+    <div class="chips" id="chipsMovies" role="tablist" aria-label="Genre filters"></div>
+    <div class="grid" id="gridAll"></div>
+  </section>
+
+  <!-- SEARCH VIEW -->
+  <section class="view" id="view-search" aria-label="Search">
+    <div class="search-big">
+      <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+      <label class="sr-only" for="viewSearch">Search movies</label>
+      <input id="viewSearch" type="search" placeholder="Search by title or genre…" autocomplete="off">
+    </div>
+    <div class="section-head"><h2 id="searchHeading">Results</h2><span class="sub" id="searchCount"></span></div>
+    <div class="grid" id="gridSearch"></div>
+  </section>
+
+  <!-- FAVORITES VIEW -->
+  <section class="view" id="view-favorites" aria-label="Favorites">
+    <h1 class="view-title">My Favorites</h1>
+    <p class="view-sub" id="favSub">Saved on this device</p>
+    <div class="grid" id="gridFavorites"></div>
+  </section>
+
+  <footer class="site-foot">
+    <div>MovieZen — cinematic discovery &amp; authorized streaming</div>
+    <div class="mono">MovieZen v1.0.0 · by Umaiz Sufiyan</div>
+  </footer>
+</main>
+
+<!-- ============================= BOTTOM NAV ============================= -->
+<nav class="bottom-nav" aria-label="Bottom navigation">
+  <button class="active" data-nav="home" aria-label="Home"><i class="fa-solid fa-house"></i><span>Home</span></button>
+  <button data-nav="search" aria-label="Search"><i class="fa-solid fa-magnifying-glass"></i><span>Search</span></button>
+  <button data-nav="favorites" aria-label="Favorites"><i class="fa-solid fa-heart"></i><span>Favorites</span></button>
+  <button data-nav="settings" aria-label="Settings"><i class="fa-solid fa-gear"></i><span>Settings</span></button>
+</nav>
+
+<!-- ============================= MOVIE DETAIL MODAL ============================= -->
+<div class="overlay" id="detailModal" role="dialog" aria-modal="true" aria-labelledby="detailTitle" hidden>
+  <div class="modal">
+    <button class="close-x" data-close aria-label="Close details"><i class="fa-solid fa-xmark"></i></button>
+    <div class="detail-grid">
+      <div class="detail-left">
+        <div class="detail-poster"><img id="detailImg" alt="" loading="lazy"></div>
+        <div class="player-wrap" id="playerWrap">
+          <div class="player-state" id="playerState"><div class="spinner"></div></div>
+          <div id="playerHost"></div>
+          <button class="player-close" id="playerClose" aria-label="Close player"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+      </div>
+      <div class="detail-right">
+        <div>
+          <span class="tag" id="detailGenre">—</span>
+          <span class="tag" id="detailYear">—</span>
+        </div>
+        <h2 id="detailTitle">—</h2>
+        <div class="rating-block">
+          <div class="avg-score">
+            <div>
+              <span class="num" id="detailAvg">0.0</span>
+              <span class="max">/ 5</span>
+              <span class="cnt" id="detailVotes">No ratings yet</span>
+            </div>
+          </div>
+          <div>
+            <div class="stars" id="detailStars" role="radiogroup" aria-label="Rate this movie">
+              <button type="button" data-star="1" aria-label="1 star"><i class="fa-regular fa-star"></i></button>
+              <button type="button" data-star="2" aria-label="2 stars"><i class="fa-regular fa-star"></i></button>
+              <button type="button" data-star="3" aria-label="3 stars"><i class="fa-regular fa-star"></i></button>
+              <button type="button" data-star="4" aria-label="4 stars"><i class="fa-regular fa-star"></i></button>
+              <button type="button" data-star="5" aria-label="5 stars"><i class="fa-regular fa-star"></i></button>
+            </div>
+            <span class="hint" id="ratingHint">Tap a star to rate</span>
+          </div>
+        </div>
+        <p class="detail-desc" id="detailDesc"></p>
+        <div class="actions">
+          <button class="btn btn-play" id="btnPlay"><i class="fa-solid fa-play"></i> Play Now</button>
+          <button class="btn btn-download" id="btnDownload" hidden><i class="fa-solid fa-download"></i> Download</button>
+          <button class="btn btn-fav" id="btnFav"><i class="fa-regular fa-heart"></i> Add to Favorites</button>
+          <button class="btn btn-report" id="btnReport"><i class="fa-regular fa-flag"></i> Report Broken Link</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================= AUTH MODAL ============================= -->
+<div class="overlay" id="authModal" role="dialog" aria-modal="true" aria-labelledby="authHeading" hidden>
+  <div class="modal">
+    <button class="close-x" data-close aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+    <div class="auth-head">
+      <span class="logo"><i class="fa-solid fa-clapperboard"></i>Movie<span class="z">Zen</span></span>
+      <p id="authHeading">Sign in to rate, report &amp; personalize</p>
+    </div>
+    <div class="tabs" role="tablist">
+      <button class="active" id="tabLogin" role="tab" aria-selected="true">Login</button>
+      <button id="tabSignup" role="tab" aria-selected="false">Sign Up</button>
+    </div>
+    <div class="auth-body">
+      <!-- GOOGLE SIGN-IN (works for both Login and Sign Up) -->
+      <button class="btn btn-ghost btn-block" type="button" id="googleBtn"><i class="fa-brands fa-google"></i> Continue with Google</button>
+      <p class="auth-switch" aria-hidden="true" style="margin-top:14px">— or with email —</p>
+
+      <!-- LOGIN FORM -->
+      <form id="loginForm" novalidate>
+        <div class="field">
+          <label for="loginEmail">Email Address</label>
+          <input id="loginEmail" type="email" placeholder="you@example.com" autocomplete="email" required>
+          <span class="msg">Enter a valid email address.</span>
+        </div>
+        <div class="field">
+          <label for="loginPass">Password</label>
+          <input id="loginPass" type="password" placeholder="••••••••" autocomplete="current-password" required>
+          <span class="msg">Password must be at least 6 characters.</span>
+        </div>
+        <button class="btn btn-accent btn-block" type="submit" id="loginBtn"><i class="fa-solid fa-right-to-bracket"></i> Login</button>
+        <p class="auth-switch">New here? <button type="button" id="goSignup">Create an account</button></p>
+      </form>
+
+      <!-- SIGNUP FORM -->
+      <form id="signupForm" novalidate hidden>
+        <div class="field">
+          <label for="suName">Full Name</label>
+          <input id="suName" type="text" placeholder="Your full name" autocomplete="name" required>
+          <span class="msg">Please enter your full name.</span>
+        </div>
+        <div class="field">
+          <label for="suEmail">Email Address</label>
+          <input id="suEmail" type="email" placeholder="you@example.com" autocomplete="email" required>
+          <span class="msg">Enter a valid email address.</span>
+        </div>
+        <div class="field">
+          <label for="suPass">Password</label>
+          <input id="suPass" type="password" placeholder="Min. 6 characters" autocomplete="new-password" required>
+          <span class="msg">Password must be at least 6 characters.</span>
+        </div>
+        <div class="field">
+          <label for="suPass2">Confirm Password</label>
+          <input id="suPass2" type="password" placeholder="Repeat password" autocomplete="new-password" required>
+          <span class="msg">Passwords do not match.</span>
+        </div>
+        <button class="btn btn-accent btn-block" type="submit" id="signupBtn"><i class="fa-solid fa-user-plus"></i> Sign Up</button>
+        <p class="auth-switch">Already have an account? <button type="button" id="goLogin">Login</button></p>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ============================= SETTINGS MODAL ============================= -->
+<div class="overlay" id="settingsModal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" hidden>
+  <div class="modal">
+    <button class="close-x" data-close aria-label="Close settings"><i class="fa-solid fa-xmark"></i></button>
+    <div class="settings-head">
+      <span class="avatar" id="setAvatar"><i class="fa-regular fa-user"></i></span>
+      <div class="who">
+        <h3 id="settingsTitle">Settings</h3>
+        <p id="setAccountLine">Not signed in</p>
+      </div>
+    </div>
+    <div class="settings-list">
+      <!-- Appearance -->
+      <div class="set-card">
+        <div class="ico"><i class="fa-solid fa-circle-half-stroke"></i></div>
+        <div class="txt"><h4>Appearance</h4><p>Choose how MovieZen looks on this device.</p></div>
+        <div class="act">
+          <div class="seg" id="themeSeg" role="group" aria-label="Theme">
+            <button data-theme-opt="dark">Dark</button>
+            <button data-theme-opt="light">Light</button>
+            <button data-theme-opt="system">System</button>
+          </div>
+        </div>
+      </div>
+      <!-- Favorites -->
+      <div class="set-card">
+        <div class="ico"><i class="fa-solid fa-heart"></i></div>
+        <div class="txt"><h4>My Favorites</h4><p>Movies you saved on this device.</p></div>
+        <div class="act">
+          <span class="count-badge" id="setFavCount">0</span>
+          <button class="link-btn" id="setFavView">View</button>
+        </div>
+      </div>
+      <!-- Account -->
+      <div class="set-card">
+        <div class="ico"><i class="fa-solid fa-user-shield"></i></div>
+        <div class="txt"><h4>Account</h4><p id="setAccountDesc">Login to rate movies and report broken links.</p></div>
+        <div class="act">
+          <button class="link-btn" id="setAccountAction">Login</button>
+        </div>
+      </div>
+      <!-- Privacy -->
+      <div class="set-card">
+        <div class="ico"><i class="fa-solid fa-user-lock"></i></div>
+        <div class="txt"><h4>Privacy</h4><p>Favorites &amp; theme stay in your browser. Ratings &amp; reports sync to your account.</p></div>
+      </div>
+      <!-- About -->
+      <div class="set-card">
+        <div class="ico"><i class="fa-solid fa-circle-info"></i></div>
+        <div class="txt"><h4>About</h4><p>MovieZen v1.0.0 — a calm, cinematic streaming experience.</p></div>
+      </div>
+      <div class="about">
+        <div>MovieZen v1.0.0</div>
+        <div class="mono">© 2026 Umaiz Sufiyan</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ==========================================================================
+   MovieZen v1.0.0 — User Panel
+   Creator: Umaiz Sufiyan
+   ========================================================================== */
+
+// ---------- Firebase Configuration ----------
+// Replace with your Firebase project credentials (databaseURL is required).
+const firebaseConfig = {
+  apiKey: "AIzaSyBrL-Xu7Iu8biNBR_bRd-Keg-VjqZ8C7as",
+  authDomain: "movie-zen.firebaseapp.com",
+  databaseURL: "https://movie-zen-default-rtdb.firebaseio.com",
+  projectId: "movie-zen",
+  storageBucket: "movie-zen.firebasestorage.app",
+  messagingSenderId: "299077323423",
+  appId: "1:299077323423:web:efd1ee51dbb55100b170aa",
+  measurementId: "G-NRNPLYPZS9"
+};
+
+// ---------- Global Variables ----------
+const GENRES = ["Action","Comedy","Drama","Horror","Sci-Fi","Romance","Thriller","Animation","Adventure","Fantasy"];
+let allMovies = [];
+let currentUser = null;
+let userRatings = {};          // { movieId: 1..5 }  (from users/{uid}/ratings)
+let currentDetail = null;      // movie object open in detail modal
+let activeGenre = "All";
+let searchQuery = "";
+let currentView = "home";
+let favorites = [];            // [{id, title, poster, ...}]
+let db, auth;
+let carIndex = 0, carTimer = null, carMovies = [];
+let searchTimer = null;
+const THEME_KEY = "moviezen_theme";
+const FAV_KEY = "moviezen_favorites";
+
+// ---------- DOM helper ----------
+const $ = (s, r=document) => r.querySelector(s);
+const $$ = (s, r=document) => [...r.querySelectorAll(s)];
+
+/* ==========================================================================
+   Initialization
+   ========================================================================== */
+function initializeFirebase(){
+  try{
+    if(!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    auth = firebase.auth();
+    db = firebase.database();
+
+    // session persistence (default local)
+    auth.onAuthStateChanged(handleAuthChange);
+
+    // real-time movies listener
+    db.ref("movies").on("value", snap => {
+      const data = snap.val() || {};
+      allMovies = Object.entries(data)
+        .map(([id, m]) => ({ id, ...m }))
+        .sort((a,b) => (b.timestamp||0) - (a.timestamp||0));
+      renderAll();
+    }, err => {
+      console.error("movies listener error:", err);
+      toast("Could not load movies. Check Firebase config / rules.", "error");
+      allMovies = [];
+      renderAll();
+    });
+
+    return true;
+  }catch(err){
+    console.error("Firebase init failed:", err);
+    toast("Firebase failed to initialize. Check credentials.", "error");
+    return false;
+  }
+}
+
+/* ==========================================================================
+   Authentication
+   ========================================================================== */
+function handleAuthChange(user){
+  currentUser = user;
+  userRatings = {};
+  if(user){
+    // load profile + ratings
+    const userRef = db.ref("users/" + user.uid);
+    userRef.once("value").then(snap => {
+      if(!snap.exists()){
+        userRef.set({
+          name: user.displayName || "",
+          email: user.email || "",
+          createdAt: firebase.database.ServerValue.TIMESTAMP,
+          favorites: []
+        });
+      }
+    }).catch(e => console.warn(e));
+    db.ref("users/" + user.uid + "/ratings").on("value", s => {
+      userRatings = s.val() || {};
+      if(currentDetail) paintStars();
+    });
+  }else{
+    db.ref && currentUser === null;
+  }
+  paintAuthUI();
+}
+
+function login(email, password){
+  return auth.signInWithEmailAndPassword(email, password);
+}
+
+function signup(name, email, password){
+  return auth.createUserWithEmailAndPassword(email, password).then(cred => {
+    return cred.user.updateProfile({ displayName: name }).then(() => {
+      return db.ref("users/" + cred.user.uid).set({
+        name, email, createdAt: firebase.database.ServerValue.TIMESTAMP, favorites: []
+      });
+    });
+  });
+}
+
+function logout(){
+  return auth.signOut().then(() => {
+    toast("Logged out", "info");
+    closeAllModals();
+  }).catch(e => toast(e.message, "error"));
+}
+
+// Google sign-in (Firebase popup). Requires the Google provider to be enabled
+// in Firebase Console → Authentication → Sign-in method.
+function loginWithGoogle(){
+  const btn = $("#googleBtn");
+  const provider = new firebase.auth.GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: "select_account" });
+  setBusy(btn, true, "Opening Google…");
+  auth.signInWithPopup(provider)
+    .then(cred => {
+      // handleAuthChange() creates the users/{uid} record on first sign-in
+      toast("Signed in as " + (cred.user.displayName || cred.user.email) + "!", "success");
+      closeModal($("#authModal"));
+    })
+    .catch(err => {
+      const code = (err && err.code) || "";
+      if(code.includes("popup-closed-by-user") || code.includes("cancelled-popup-request")) return;
+      if(code.includes("popup-blocked")){
+        toast("Popup blocked — allow popups for this site and try again.", "error");
+        return;
+      }
+      console.error(err);
+      toast(friendlyAuthError(err), "error");
+    })
+    .finally(() => setBusy(btn, false));
+}
+
+function paintAuthUI(){
+  const btn = $("#profileBtn");
+  const setAvatar = $("#setAvatar");
+  if(currentUser){
+    const initial = (currentUser.displayName || currentUser.email || "?").trim().charAt(0).toUpperCase();
+    btn.innerHTML = initial;
+    btn.style.background = "var(--accent)";
+    btn.style.color = "var(--accent-fg)";
+    setAvatar.innerHTML = initial;
+    setAvatar.style.background = "var(--accent)";
+    setAvatar.style.color = "var(--accent-fg)";
+    $("#setAccountLine").textContent = currentUser.displayName || currentUser.email;
+    $("#setAccountDesc").textContent = "Signed in as " + (currentUser.email || "");
+    $("#setAccountAction").textContent = "Logout";
+    $("#setAccountAction").classList.add("danger");
+  }else{
+    btn.innerHTML = '<i class="fa-regular fa-user"></i>';
+    btn.style.background = "";
+    btn.style.color = "";
+    setAvatar.innerHTML = '<i class="fa-regular fa-user"></i>';
+    setAvatar.style.background = "";
+    setAvatar.style.color = "";
+    $("#setAccountLine").textContent = "Not signed in";
+    $("#setAccountDesc").textContent = "Login to rate movies and report broken links.";
+    $("#setAccountAction").textContent = "Login";
+    $("#setAccountAction").classList.remove("danger");
+  }
+}
+
+/* ==========================================================================
+   Data Loading / Rendering
+   ========================================================================== */
+function movieAvg(m){
+  if(!m || !m.ratingCount) return null;
+  return (m.ratingTotal / m.ratingCount);
+}
+
+function renderAll(){
+  renderChips();
+  renderHome();
+  renderMoviesView();
+  renderSearchView();
+  renderFavoritesView();
+  updateFavUI();
+}
+
+function renderChips(){
+  const html = ["All", ...GENRES].map(g =>
+    `<button class="chip${g===activeGenre?" active":""}" data-genre="${g}" role="tab" aria-selected="${g===activeGenre}">${g}</button>`
+  ).join("");
+  $("#chipsHome").innerHTML = html;
+  $("#chipsMovies").innerHTML = html;
+}
+
+function genreFiltered(){
+  if(activeGenre === "All") return allMovies;
+  return allMovies.filter(m => m.genre === activeGenre);
+}
+
+function renderHome(){
+  const list = genreFiltered();
+  // Latest (already sorted desc by timestamp)
+  const latest = list.slice(0, 15);
+  $("#latestCount").textContent = latest.length + " titles";
+  fillGrid($("#gridLatest"), latest, "No movies yet", "Movies added by the admin will appear here.");
+
+  // Trending: rated first, by average
+  const rated = [...list].filter(m => m.ratingCount > 0)
+    .sort((a,b) => (b.ratingTotal/b.ratingCount) - (a.ratingTotal/a.ratingCount))
+    .slice(0, 10);
+  const trending = rated.length ? rated : latest.slice(0, 5);
+  fillGrid($("#gridTrending"), trending, "Nothing trending yet", "Rate some movies to build trends.");
+
+  // Recommended: shuffled sample of the library
+  const rec = shuffle(list).slice(0, 10);
+  fillGrid($("#gridRecommended"), rec, "No recommendations", "Browse more titles to get recommendations.");
+
+  renderCarousel();
+}
+
+function renderMoviesView(){
+  const list = genreFiltered();
+  $("#moviesSub").textContent = activeGenre === "All"
+    ? `${allMovies.length} titles in the library`
+    : `${list.length} title${list.length===1?"":"s"} in ${activeGenre}`;
+  fillGrid($("#gridAll"), list, "Nothing here yet", activeGenre==="All"
+    ? "Movies added by the admin will appear here."
+    : `No ${activeGenre} movies found. Try another genre.`);
+}
+
+function renderSearchView(){
+  const q = searchQuery.trim().toLowerCase();
+  let list = genreFiltered();
+  if(q){
+    list = list.filter(m =>
+      (m.title||"").toLowerCase().includes(q) ||
+      (m.genre||"").toLowerCase().includes(q) ||
+      (m.description||"").toLowerCase().includes(q)
+    );
+  }
+  $("#searchCount").textContent = list.length + " result" + (list.length===1?"":"s");
+  $("#searchHeading").textContent = q ? `Results for "${searchQuery.trim()}"` : "All Movies";
+
+  if(!list.length){
+    $("#gridSearch").innerHTML = q
+      ? emptyHTML("fa-magnifying-glass", "No results found", "Try a different title or genre.")
+      : emptyHTML("fa-film", "No movies yet", "Check back soon — new titles arrive regularly.");
+    return;
+  }
+  fillGrid($("#gridSearch"), list, "No results", "Try another search.");
+}
+
+function renderFavoritesView(){
+  favorites = loadFavorites();
+  $("#favSub").textContent = `${favorites.length} saved on this device`;
+  if(!favorites.length){
+    $("#gridFavorites").innerHTML = emptyHTML(
+      "fa-heart", "No favorites yet",
+      "Tap the heart on any movie to save it here — works offline.",
+      `<button class="btn btn-accent btn-sm" data-nav="home"><i class="fa-solid fa-compass"></i> Discover Movies</button>`
+    );
+    return;
+  }
+  fillGrid($("#gridFavorites"), favorites, "No favorites", "");
+}
+
+/* ---------- Card / grid helpers ---------- */
+function fillGrid(grid, movies, emptyTitle, emptyDesc){
+  grid.setAttribute("aria-busy","false");
+  if(!movies.length){
+    grid.innerHTML = emptyHTML("fa-film", emptyTitle, emptyDesc);
+    return;
+  }
+  grid.innerHTML = movies.map(cardHTML).join("");
+  // bind card events
+  $$(".mcard", grid).forEach(card => {
+    const id = card.dataset.id;
+    const m = allMovies.find(x => x.id === id) || favorites.find(x => x.id === id);
+    card.addEventListener("click", () => m && openMovieDetail(m));
+    const fav = $(".fav-btn", card);
+    if(fav){
+      fav.addEventListener("click", e => { e.stopPropagation(); m && toggleFavorite(m, fav); });
+    }
+    const img = $("img", card);
+    if(img) img.addEventListener("error", () => { img.src = fallbackPoster(m ? m.title : ""); }, { once:true });
+  });
+}
+
+function cardHTML(m){
+  const avg = movieAvg(m);
+  const isFav = favorites.some(f => f.id === m.id);
+  const rate = avg !== null
+    ? `<span class="rating"><i class="fa-solid fa-star"></i><b>${avg.toFixed(1)}</b> · ${m.ratingCount}</span>`
+    : `<span class="rating"><i class="fa-regular fa-star"></i>Not rated</span>`;
+  return `
+  <article class="mcard" data-id="${m.id}" tabindex="0" role="button" aria-label="${esc(m.title)} details">
+    <div class="poster">
+      <img src="${esc(m.poster||"")}" alt="${esc(m.title)} poster" loading="lazy">
+      <button class="fav-btn${isFav?" on":""}" aria-label="${isFav?"Remove from":"Add to"} favorites">
+        <i class="${isFav?"fa-solid":"fa-regular"} fa-heart"></i>
+      </button>
+      <div class="play-hint" aria-hidden="true"><span><i class="fa-solid fa-play"></i></span></div>
+    </div>
+    <div class="body">
+      <h3>${esc(m.title||"Untitled")}</h3>
+      <div class="meta">
+        <span class="genre-tag">${esc(m.genre||"—")}</span>
+        ${rate}
+      </div>
+    </div>
+  </article>`;
+}
+
+function emptyHTML(icon, title, desc, extra=""){
+  return `<div class="empty">
+    <i class="fa-solid ${icon}" aria-hidden="true"></i>
+    <h3>${esc(title)}</h3>
+    <p>${esc(desc)}</p>
+    ${extra}
+  </div>`;
+}
+
+function skeletonHTML(n=10){
+  return Array.from({length:n}, () => `<div class="skel"><div class="skel-p"></div><div class="skel-b"></div></div>`).join("");
+}
+
+/* ==========================================================================
+   3D Rotating Carousel (latest 5 movies)
+   ========================================================================== */
+function renderCarousel(){
+  carMovies = allMovies.slice(0, 5);
+  const stage = $("#stage");
+  const dots = $("#carDots");
+  if(!carMovies.length){
+    stage.innerHTML = "";
+    dots.innerHTML = "";
+    return;
+  }
+  if(carIndex >= carMovies.length) carIndex = 0;
+
+  stage.innerHTML = carMovies.map((m,i) => `
+    <div class="slide" data-i="${i}" role="button" tabindex="0" aria-label="${esc(m.title)}">
+      <img src="${esc(m.poster||"")}" alt="${esc(m.title)} poster" loading="lazy">
+      <div class="slide-shade"></div>
+      <div class="slide-title">${esc(m.title||"")}</div>
+    </div>`).join("");
+
+  $$(".slide", stage).forEach(sl => {
+    const i = +sl.dataset.i;
+    const m = carMovies[i];
+    const img = $("img", sl);
+    if(img) img.addEventListener("error", () => { img.src = fallbackPoster(m.title); }, { once:true });
+    sl.addEventListener("click", () => { stopAuto(); openMovieDetail(m); startAuto(); });
+    sl.addEventListener("keydown", e => { if(e.key==="Enter"||e.key===" "){ e.preventDefault(); openMovieDetail(m); } });
+  });
+
+  dots.innerHTML = carMovies.map((_,i) =>
+    `<button data-dot="${i}" aria-label="Go to slide ${i+1}"></button>`).join("");
+  $$("#carDots button").forEach(b => b.addEventListener("click", () => { stopAuto(); goToSlide(+b.dataset.dot); startAuto(); }));
+
+  layoutCarousel();
+}
+
+function layoutCarousel(){
+  const stage = $("#stage");
+  const items = $$(".slide", stage);
+  const n = items.length;
+  if(!n) return;
+  const radius = Math.min(420, Math.max(220, window.innerWidth * 0.34));
+  items.forEach((el,i) => {
+    const angle = (i - carIndex) * (360 / n);
+    const rad = angle * Math.PI / 180;
+    const x = Math.sin(rad) * radius;
+    const z = Math.cos(rad) * radius - radius;
+    const rotY = angle;
+    // front item fully opaque; back items faded & behind
+    const opacity = i === carIndex ? 1 : 0.45;
+    const zIndex = Math.round(1000 + Math.cos(rad) * 100);
+    el.style.transform = `translate(-50%,-50%) translateX(${x}px) translateZ(${z}px) rotateY(${rotY}deg)`;
+    el.style.opacity = opacity;
+    el.style.zIndex = zIndex;
+    el.style.filter = i === carIndex ? "none" : "brightness(.7)";
+    el.classList.toggle("is-active", i === carIndex);
+  });
+  stage.style.transform = `translateZ(-${radius}px)`;
+  // dots
+  $$("#carDots button").forEach((b,i) => b.classList.toggle("active", i === carIndex));
+}
+
+function goToSlide(i){
+  const n = carMovies.length;
+  if(!n) return;
+  carIndex = ((i % n) + n) % n;
+  layoutCarousel();
+}
+function nextSlide(){ goToSlide(carIndex + 1); }
+function prevSlide(){ goToSlide(carIndex - 1); }
+
+function startAuto(){
+  stopAuto();
+  if(carMovies.length < 2) return;
+  if(window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  carTimer = setInterval(nextSlide, 4000);
+}
+function stopAuto(){ if(carTimer){ clearInterval(carTimer); carTimer = null; } }
+
+/* Carousel controls + swipe */
+function bindCarousel(){
+  $("#carPrev").addEventListener("click", () => { stopAuto(); prevSlide(); startAuto(); });
+  $("#carNext").addEventListener("click", () => { stopAuto(); nextSlide(); startAuto(); });
+
+  const car = $("#carousel");
+  let sx=0, sy=0, tracking=false;
+  car.addEventListener("touchstart", e => {
+    sx = e.touches[0].clientX; sy = e.touches[0].clientY; tracking = true; stopAuto();
+  }, {passive:true});
+  car.addEventListener("touchend", e => {
+    if(!tracking) return; tracking = false;
+    const dx = e.changedTouches[0].clientX - sx;
+    const dy = e.changedTouches[0].clientY - sy;
+    if(Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy)) {
+      dx < 0 ? nextSlide() : prevSlide();
+    }
+    startAuto();
+  }, {passive:true});
+
+  car.addEventListener("mouseenter", stopAuto);
+  car.addEventListener("mouseleave", startAuto);
+
+  window.addEventListener("resize", debounce(layoutCarousel, 150));
+}
+
+/* ==========================================================================
+   Movie Detail Modal + Player
+   ========================================================================== */
+function openMovieDetail(movie){
+  currentDetail = movie;
+  const modal = $("#detailModal");
+
+  $("#detailTitle").textContent = movie.title || "Untitled";
+  $("#detailGenre").textContent = movie.genre || "—";
+  const year = movie.timestamp ? new Date(movie.timestamp).getFullYear() : "—";
+  $("#detailYear").textContent = year;
+  $("#detailDesc").textContent = movie.description || "No description available.";
+  $("#detailVotes").textContent = movie.ratingCount
+    ? `${movie.ratingCount} rating${movie.ratingCount===1?"":"s"}`
+    : "No ratings yet";
+
+  const avg = movieAvg(movie);
+  $("#detailAvg").textContent = avg !== null ? avg.toFixed(1) : "0.0";
+
+  const img = $("#detailImg");
+  img.src = movie.poster || fallbackPoster(movie.title);
+  img.alt = (movie.title || "Movie") + " poster";
+  img.onerror = () => { img.src = fallbackPoster(movie.title); };
+
+  // Play button visibility
+  const playBtn = $("#btnPlay");
+  playBtn.hidden = !movie.playUrl;
+  // Download button visibility
+  const dlBtn = $("#btnDownload");
+  dlBtn.hidden = !movie.downloadUrl;
+
+  // Favorite state
+  updateDetailFavBtn();
+  // Stars
+  paintStars();
+  // Close player
+  closePlayer();
+
+  openModal(modal);
+}
+
+function paintStars(){
+  if(!currentDetail) return;
+  const mine = userRatings[currentDetail.id] || 0;
+  $$("#detailStars button").forEach(b => {
+    const v = +b.dataset.star;
+    const icon = $("i", b);
+    const filled = v <= mine;
+    icon.className = filled ? "fa-solid fa-star" : "fa-regular fa-star";
+    b.classList.toggle("yours", filled);
+    b.setAttribute("aria-checked", v === mine ? "true" : "false");
+  });
+  $("#ratingHint").textContent = currentUser
+    ? (mine ? `Your rating: ${mine} star${mine===1?"":"s"}` : "Tap a star to rate")
+    : "Login to rate this movie";
+}
+
+/* convertToEmbedUrl — handles YouTube, Vimeo, Dailymotion & direct video URLs */
+function convertToEmbedUrl(url){
+  if(!url) return null;
+  const u = url.trim();
+  // Direct video file
+  if(/\.(mp4|webm|ogg|mov|m3u8)(\?.*)?$/i.test(u)) return { type:"video", url:u };
+
+  try{
+    const parsed = new URL(u, location.href);
+    const host = parsed.hostname.replace(/^www\./, "").toLowerCase();
+    let id;
+
+    // YouTube: watch?v= / youtu.be/ / shorts/ / embed/ / live/
+    if(host === "youtu.be"){
+      id = parsed.pathname.split("/").filter(Boolean)[0];
+      if(id) return { type:"iframe", url:`https://www.youtube.com/embed/${id}?autoplay=1&rel=0` };
+    }
+    if(host.includes("youtube.com") || host.includes("youtube-nocookie.com")){
+      id = parsed.searchParams.get("v");
+      if(!id){
+        const segs = parsed.pathname.split("/").filter(Boolean);
+        if(["embed","shorts","live","v"].includes(segs[0])) id = segs[1];
+      }
+      if(id) return { type:"iframe", url:`https://www.youtube.com/embed/${id}?autoplay=1&rel=0` };
+    }
+    // Vimeo: vimeo.com/123456 / player.vimeo.com/video/123456
+    if(host.includes("vimeo.com")){
+      const segs = parsed.pathname.split("/").filter(Boolean);
+      id = segs.find(s => /^\d+$/.test(s));
+      if(id) return { type:"iframe", url:`https://player.vimeo.com/video/${id}?autoplay=1` };
+    }
+    // Dailymotion: dailymotion.com/video/xyz / dai.ly/xyz / dailymotion.com/embed/video/xyz
+    if(host.includes("dailymotion.com") || host === "dai.ly"){
+      const segs = parsed.pathname.split("/").filter(Boolean);
+      if(host === "dai.ly") id = segs[0];
+      else {
+        const idx = segs.indexOf("video");
+        id = idx >= 0 ? segs[idx+1] : (segs[0]==="embed" ? segs[1] : segs[0]);
+      }
+      if(id) return { type:"iframe", url:`https://www.dailymotion.com/embed/video/${id}?autoplay=1` };
+    }
+    // Already an embed URL or any http(s) URL → try as iframe (direct authorized embeds)
+    if(/^https?:\/\//i.test(u)) return { type:"iframe", url:u };
+  }catch(e){ console.warn("convertToEmbedUrl:", e); }
+  return null;
+}
+
+function playMovie(url){
+  const wrap = $("#playerWrap");
+  const host = $("#playerHost");
+  const state = $("#playerState");
+  const converted = convertToEmbedUrl(url);
+  if(!converted){
+    state.innerHTML = `<div style="text-align:center;padding:20px"><p style="margin-bottom:8px">This play link is unavailable.</p><button class="btn btn-sm btn-ghost" onclick="closePlayer()">Back to poster</button></div>`;
+    wrap.classList.add("on");
+    return;
+  }
+  host.innerHTML = "";
+  state.style.display = "grid";
+  state.innerHTML = '<div class="spinner"></div>';
+  wrap.classList.add("on");
+
+  if(converted.type === "video"){
+    const v = document.createElement("video");
+    v.src = converted.url; v.controls = true; v.autoplay = true; v.playsInline = true;
+    v.addEventListener("playing", () => state.style.display = "none");
+    v.addEventListener("error", () => {
+      state.style.display = "grid";
+      state.innerHTML = '<div style="text-align:center;padding:20px"><p>Unable to play this video.</p></div>';
+    });
+    host.appendChild(v);
+  }else{
+    const f = document.createElement("iframe");
+    f.src = converted.url;
+    f.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
+    f.allowFullscreen = true;
+    f.setAttribute("title", "Video player");
+    f.addEventListener("load", () => state.style.display = "none");
+    f.addEventListener("error", () => {
+      state.style.display = "grid";
+      state.innerHTML = '<div style="text-align:center;padding:20px"><p>Player failed to load.</p></div>';
+    });
+    host.appendChild(f);
+  }
+}
+
+function closePlayer(){
+  $("#playerHost").innerHTML = "";
+  $("#playerWrap").classList.remove("on");
+}
+
+/* ==========================================================================
+   Star Rating (1–5, requires login, updates Firebase in real-time)
+   ========================================================================== */
+function bindStars(){
+  const wrap = $("#detailStars");
+  wrap.addEventListener("click", e => {
+    const btn = e.target.closest("button[data-star]");
+    if(!btn) return;
+    const value = +btn.dataset.star;
+    if(!currentUser){
+      toast("Please login to rate this movie", "info");
+      openModal($("#authModal"));
+      return;
+    }
+    submitRating(currentDetail.id, value);
+  });
+  // hover states
+  wrap.addEventListener("mouseover", e => {
+    const btn = e.target.closest("button[data-star]");
+    if(!btn) return;
+    const v = +btn.dataset.star;
+    wrap.classList.add("hovering");
+    $$("#detailStars button").forEach(b => b.classList.toggle("lit", +b.dataset.star <= v));
+  });
+  wrap.addEventListener("mouseleave", () => {
+    wrap.classList.remove("hovering");
+    $$("#detailStars button").forEach(b => b.classList.remove("lit"));
+  });
+}
+
+async function submitRating(movieId, value){
+  const m = allMovies.find(x => x.id === movieId);
+  if(!m) return;
+  try{
+    const prev = userRatings[movieId] || 0;
+    let total = m.ratingTotal || 0;
+    let count = m.ratingCount || 0;
+    if(prev){
+      total = total - prev + value;            // replace previous rating
+    }else{
+      total = total + value;                    // first rating
+      count = count + 1;
+    }
+    const updates = {};
+    updates["movies/" + movieId + "/ratingTotal"] = total;
+    updates["movies/" + movieId + "/ratingCount"] = count;
+    updates["users/" + currentUser.uid + "/ratings/" + movieId] = value;
+    await db.ref().update(updates);
+    userRatings[movieId] = value;
+    m.ratingTotal = total;
+    m.ratingCount = count;
+    $("#detailAvg").textContent = (total / count).toFixed(1);
+    $("#detailVotes").textContent = `${count} rating${count===1?"":"s"}`;
+    paintStars();
+    toast(`Rated ${value} star${value===1?"":"s"} — thank you!`, "success");
+    renderAll();
+  }catch(err){
+    console.error(err);
+    toast("Could not save rating. Check database rules.", "error");
+  }
+}
+
+/* ==========================================================================
+   Favorites (localStorage — works offline)
+   ========================================================================== */
+function loadFavorites(){
+  try{ return JSON.parse(localStorage.getItem(FAV_KEY)) || []; }
+  catch(e){ return []; }
+}
+function saveFavorites(list){
+  localStorage.setItem(FAV_KEY, JSON.stringify(list));
+  favorites = list;
+  updateFavUI();
+}
+function isFav(id){ return favorites.some(f => f.id === id); }
+
+function toggleFavorite(movie, btnEl){
+  let list = loadFavorites();
+  const idx = list.findIndex(f => f.id === movie.id);
+  if(idx > -1){
+    list.splice(idx, 1);
+    toast("Removed from favorites", "info");
+  }else{
+    list.unshift({
+      id: movie.id, title: movie.title, genre: movie.genre, poster: movie.poster,
+      playUrl: movie.playUrl, downloadUrl: movie.downloadUrl,
+      description: movie.description, ratingTotal: movie.ratingTotal||0,
+      ratingCount: movie.ratingCount||0, timestamp: movie.timestamp||Date.now()
+    });
+    toast("Added to favorites", "success");
+  }
+  saveFavorites(list);
+  if(btnEl){
+    const on = isFav(movie.id);
+    btnEl.classList.toggle("on", on);
+    btnEl.innerHTML = `<i class="${on?"fa-solid":"fa-regular"} fa-heart"></i>`;
+    btnEl.setAttribute("aria-label", on ? "Remove from favorites" : "Add to favorites");
+  }
+  updateDetailFavBtn();
+  if(currentView === "favorites") renderFavoritesView();
+}
+
+function updateDetailFavBtn(){
+  if(!currentDetail) return;
+  const on = isFav(currentDetail.id);
+  const b = $("#btnFav");
+  b.classList.toggle("on", on);
+  b.innerHTML = on
+    ? '<i class="fa-solid fa-heart"></i> In Favorites'
+    : '<i class="fa-regular fa-heart"></i> Add to Favorites';
+}
+
+function updateFavUI(){
+  const count = favorites.length;
+  $("#setFavCount").textContent = count;
+  // badge on bottom-nav favorites
+  const favNav = $('.bottom-nav button[data-nav="favorites"]');
+  let badge = $(".badge", favNav);
+  if(count > 0){
+    if(!badge){
+      badge = document.createElement("span");
+      badge.className = "badge";
+      favNav.appendChild(badge);
+    }
+    badge.textContent = count > 9 ? "9+" : count;
+  }else if(badge){ badge.remove(); }
+}
+
+/* ==========================================================================
+   Reports (broken links)
+   ========================================================================== */
+async function reportBrokenLink(movie){
+  if(!currentUser){
+    toast("Please login to report a broken link", "info");
+    openModal($("#authModal"));
+    return;
+  }
+  try{
+    await db.ref("reports").push({
+      movieId: movie.id,
+      movieTitle: movie.title || "",
+      userId: currentUser.uid,
+      reason: "Broken play/download link",
+      timestamp: firebase.database.ServerValue.TIMESTAMP
+    });
+    toast("Report submitted. Thank you!", "success");
+  }catch(err){
+    console.error(err);
+    toast("Could not submit report. Try again.", "error");
+  }
+}
+
+/* ==========================================================================
+   Views / Navigation
+   ========================================================================== */
+function showView(name){
+  if(name === "settings"){ openSettings(); return; }
+  currentView = name;
+  $$(".view").forEach(v => v.classList.toggle("active", v.id === "view-" + name));
+  // nav active states
+  $$("[data-nav]").forEach(b => b.classList.toggle("active", b.dataset.nav === name));
+  // main nav special: genres focuses chips
+  if(name === "search"){
+    const input = window.innerWidth > 1024 ? $("#globalSearch") : $("#viewSearch");
+    setTimeout(() => input && input.focus(), 60);
+  }
+  if(name === "movies" || name === "home"){
+    // scroll chips into view for genres intent handled by caller
+  }
+  closeDrawer();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function openSettings(){
+  paintAuthUI();
+  updateFavUI();
+  syncThemeSeg();
+  openModal($("#settingsModal"));
+  closeDrawer();
+}
+
+function handleNav(target){
+  switch(target){
+    case "home": showView("home"); startAuto(); break;
+    case "movies": showView("movies"); break;
+    case "search": showView("search"); break;
+    case "favorites": showView("favorites"); break;
+    case "settings": openSettings(); break;
+    case "genres":
+      showView("home");
+      setTimeout(() => $("#chipsHome").scrollIntoView({ behavior:"smooth", block:"center" }), 120);
+      break;
+  }
+}
+
+/* ==========================================================================
+   Search (debounced)
+   ========================================================================== */
+function setQuery(q){
+  searchQuery = q;
+  $("#headerSearch").classList.toggle("has-q", !!q);
+  $("#globalSearch").value = q;
+  $("#viewSearch").value = q;
+}
+function onSearchInput(q, fromView){
+  setQuery(q);
+  if(q && currentView !== "search" && fromView !== "header"){ showView("search"); }
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    renderSearchView();
+    if(currentView !== "search" && q) showView("search");
+  }, 250);
+}
+
+/* ==========================================================================
+   Modal helpers
+   ========================================================================== */
+function openModal(el){
+  el.hidden = false;
+  // force reflow so transition plays
+  void el.offsetWidth;
+  el.classList.add("open");
+  document.body.style.overflow = "hidden";
+  const focusable = el.querySelector("input, button, [tabindex]");
+  if(focusable && el.id === "authModal") focusable.focus();
+}
+function closeModal(el){
+  el.classList.remove("open");
+  document.body.style.overflow = "";
+  setTimeout(() => { el.hidden = true; }, 250);
+  if(el.id === "detailModal"){ closePlayer(); currentDetail = null; }
+}
+function closeAllModals(){
+  $$(".overlay.open").forEach(closeModal);
+}
+
+function bindModals(){
+  $$(".overlay").forEach(ov => {
+    ov.addEventListener("click", e => { if(e.target === ov) closeModal(ov); });
+    const x = ov.querySelector("[data-close]");
+    if(x) x.addEventListener("click", () => closeModal(ov));
+  });
+  document.addEventListener("keydown", e => {
+    if(e.key === "Escape"){
+      const open = $(".overlay.open");
+      if(open) closeModal(open);
+      else if($("#drawer").classList.contains("open")) closeDrawer();
+    }
+  });
+}
+
+/* ==========================================================================
+   Drawer
+   ========================================================================== */
+function openDrawer(){
+  $("#drawer").classList.add("open");
+  $("#drawerBackdrop").classList.add("open");
+  $("#drawer").setAttribute("aria-hidden","false");
+  $("#menuBtn").setAttribute("aria-expanded","true");
+}
+function closeDrawer(){
+  $("#drawer").classList.remove("open");
+  $("#drawerBackdrop").classList.remove("open");
+  $("#drawer").setAttribute("aria-hidden","true");
+  $("#menuBtn").setAttribute("aria-expanded","false");
+}
+
+/* ==========================================================================
+   Theme (dark / light / system)
+   ========================================================================== */
+function applyTheme(pref){
+  let mode = pref;
+  if(pref === "system"){
+    mode = window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  }
+  document.documentElement.setAttribute("data-theme", mode);
+  const icon = mode === "dark" ? "fa-regular fa-moon" : "fa-regular fa-sun";
+  $("#themeQuickBtn").innerHTML = `<i class="${icon}"></i>`;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if(meta) meta.content = mode === "dark" ? "#0B0C0E" : "#F4F5F7";
+}
+function setTheme(pref){
+  localStorage.setItem(THEME_KEY, pref);
+  applyTheme(pref);
+  syncThemeSeg();
+}
+function currentThemePref(){ return localStorage.getItem(THEME_KEY) || "dark"; }
+function syncThemeSeg(){
+  const pref = currentThemePref();
+  $$("#themeSeg button").forEach(b => b.classList.toggle("active", b.dataset.themeOpt === pref));
+}
+
+/* ==========================================================================
+   Toast
+   ========================================================================== */
+function toast(msg, type="info"){
+  const host = $("#toastHost");
+  const icons = { success:"fa-circle-check", error:"fa-circle-exclamation", info:"fa-circle-info" };
+  const el = document.createElement("div");
+  el.className = `toast ${type}`;
+  el.innerHTML = `<i class="fa-solid ${icons[type]||icons.info}"></i><span>${esc(msg)}</span>`;
+  host.appendChild(el);
+  setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 260); }, 3200);
+}
+
+/* ==========================================================================
+   Helpers
+   ========================================================================== */
+function esc(s){
+  return String(s == null ? "" : s)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+function debounce(fn, ms){
+  let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+}
+function shuffle(arr){
+  const a = [...arr];
+  for(let i=a.length-1;i>0;i--){ const j = Math.floor(Math.random()*(i+1)); [a[i],a[j]] = [a[j],a[i]]; }
+  return a;
+}
+function fallbackPoster(title){
+  const t = esc((title||"Movie").slice(0,18));
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='400' height='600'>
+    <defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'>
+      <stop offset='0' stop-color='%231D2025'/><stop offset='1' stop-color='%23121417'/>
+    </linearGradient></defs>
+    <rect width='400' height='600' fill='url(%23g)'/>
+    <g fill='none' stroke='%23E8A83E' stroke-width='6' stroke-linecap='round'>
+      <rect x='150' y='230' width='100' height='70' rx='8'/>
+      <path d='M250 250 l40 -20 v60 l-40 -20'/>
+      <circle cx='175' cy='265' r='8'/><circle cx='225' cy='265' r='8'/>
+      <path d='M130 330 h140'/><path d='M150 355 h100'/>
+    </g>
+    <text x='200' y='420' text-anchor='middle' fill='%23A7ABB2' font-family='Inter,sans-serif' font-size='22' font-weight='600'>${t}</text>
+    <text x='200' y='455' text-anchor='middle' fill='%23737982' font-family='monospace' font-size='13'>MovieZen</text>
+  </svg>`;
+  return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg)
+    .replace(/%2523/g,"%23");
+}
+
+/* ==========================================================================
+   Demo seed (console only) — remove before production
+   ========================================================================== */
+function seedDemoData(){
+  const samples = [
+    { title:"Neon Horizon", genre:"Sci-Fi", poster:"https://picsum.photos/seed/mz1/400/600",
+      playUrl:"https://www.youtube.com/watch?v=aqz-KE-bpKQ", downloadUrl:"",
+      description:"A lone pilot discovers a signal from a dying star and races against time to decode a message that could rewrite humanity's future across the outer colonies." },
+    { title:"Midnight Harbor", genre:"Thriller", poster:"https://picsum.photos/seed/mz2/400/600",
+      playUrl:"https://www.youtube.com/watch?v=M7lc1UVf-VE", downloadUrl:"",
+      description:"When a detective's only witness vanishes from a locked room, every clue points back to the storm-battered harbor where the case began years ago." },
+    { title:"Paper Wings", genre:"Drama", poster:"https://picsum.photos/seed/mz3/400/600",
+      playUrl:"https://vimeo.com/76979871", downloadUrl:"",
+      description:"Two estranged siblings reunite to rebuild their father's failing workshop, confronting buried grief and a choice that will define their future." },
+    { title:"Garden of Ash", genre:"Fantasy", poster:"https://picsum.photos/seed/mz4/400/600",
+      playUrl:"https://www.youtube.com/watch?v=YE7VzlLtp-4", downloadUrl:"",
+      description:"In a kingdom where memories bloom as flowers, a botanist princess must save the royal garden before the last memory of her mother fades forever." },
+    { title:"Laugh Track", genre:"Comedy", poster:"https://picsum.photos/seed/mz5/400/600",
+      playUrl:"https://www.dailymotion.com/video/x8o8d8x", downloadUrl:"",
+      description:"A washed-up sitcom writer accidentally books himself as the laugh track for his own life — and the audience is never quite on his side." },
+    { title:"Iron Bloom", genre:"Action", poster:"https://picsum.photos/seed/mz6/400/600",
+      playUrl:"https://www.youtube.com/watch?v=dQw4w9WgXcQ", downloadUrl:"",
+      description:"An ex-special-forces courier is pulled back in when a prototype weapon she was never meant to deliver surfaces in the wrong hands." },
+    { title:"Static", genre:"Horror", poster:"https://picsum.photos/seed/mz7/400/600",
+      playUrl:"https://www.youtube.com/watch?v=jNQXAC9IVRw", downloadUrl:"",
+      description:"A night-shift radio host starts receiving calls from listeners who haven't been heard from in years — and one of them knows her name." },
+    { title:"Summer Circuit", genre:"Animation", poster:"https://picsum.photos/seed/mz8/400/600",
+      playUrl:"https://www.youtube.com/watch?v=aqz-KE-bpKQ", downloadUrl:"",
+      description:"A tiny maintenance bot joins a cross-country race to return a lost child to home, learning that the shortest route is never the fastest one." },
+    { title:"Second Avenue", genre:"Romance", poster:"https://picsum.photos/seed/mz9/400/600",
+      playUrl:"https://vimeo.com/76979871", downloadUrl:"",
+      description:"A chance meeting at a closed bookshop becomes a year-long correspondence between two people afraid to meet again." },
+    { title:"The Long Trail", genre:"Adventure", poster:"https://picsum.photos/seed/mz10/400/600",
+      playUrl:"https://www.youtube.com/watch?v=YE7VzlLtp-4", downloadUrl:"",
+      description:"Three climbers chase a route erased from every map, only to find the summit holds a secret their mentor died protecting." }
+  ];
+  const ref = db.ref("movies");
+  samples.forEach(s => {
+    ref.push({ ...s, timestamp: Date.now(), ratingTotal: 0, ratingCount: 0 });
+  });
+  toast("Seeded " + samples.length + " demo movies", "success");
+}
+
+/* ==========================================================================
+   Auth form UI
+   ========================================================================== */
+function switchAuthTab(which){
+  const isLogin = which === "login";
+  $("#tabLogin").classList.toggle("active", isLogin);
+  $("#tabSignup").classList.toggle("active", !isLogin);
+  $("#tabLogin").setAttribute("aria-selected", isLogin);
+  $("#tabSignup").setAttribute("aria-selected", !isLogin);
+  $("#loginForm").hidden = !isLogin;
+  $("#signupForm").hidden = isLogin;
+}
+function setFieldErr(input, bad){
+  input.classList.toggle("err", bad);
+}
+function setBusy(btn, busy, busyText){
+  if(busy){
+    btn.dataset.orig = btn.innerHTML;
+    btn.innerHTML = `<div class="spinner" style="width:18px;height:18px;border-width:2px"></div> ${busyText||"Please wait…"}`;
+    btn.disabled = true;
+  }else{
+    if(btn.dataset.orig) btn.innerHTML = btn.dataset.orig;
+    btn.disabled = false;
+  }
+}
+
+function bindAuthForms(){
+  $("#tabLogin").addEventListener("click", () => switchAuthTab("login"));
+  $("#tabSignup").addEventListener("click", () => switchAuthTab("signup"));
+  $("#goSignup").addEventListener("click", () => switchAuthTab("signup"));
+  $("#goLogin").addEventListener("click", () => switchAuthTab("login"));
+  $("#googleBtn").addEventListener("click", loginWithGoogle);
+
+  $("#loginForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const email = $("#loginEmail"), pass = $("#loginPass");
+    const emailBad = !/^\S+@\S+\.\S+$/.test(email.value.trim());
+    const passBad = pass.value.length < 6;
+    setFieldErr(email, emailBad); setFieldErr(pass, passBad);
+    if(emailBad || passBad) return;
+    const btn = $("#loginBtn");
+    setBusy(btn, true, "Logging in…");
+    try{
+      await login(email.value.trim(), pass.value);
+      toast("Welcome back!", "success");
+      closeModal($("#authModal"));
+      e.target.reset();
+    }catch(err){
+      toast(friendlyAuthError(err), "error");
+    }finally{ setBusy(btn, false); }
+  });
+
+  $("#signupForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const name = $("#suName"), email = $("#suEmail"), pass = $("#suPass"), pass2 = $("#suPass2");
+    const nameBad = name.value.trim().length < 2;
+    const emailBad = !/^\S+@\S+\.\S+$/.test(email.value.trim());
+    const passBad = pass.value.length < 6;
+    const pass2Bad = pass2.value !== pass.value || pass.value.length < 6;
+    setFieldErr(name, nameBad); setFieldErr(email, emailBad);
+    setFieldErr(pass, passBad); setFieldErr(pass2, pass2Bad);
+    if(nameBad || emailBad || passBad || pass2Bad) return;
+    const btn = $("#signupBtn");
+    setBusy(btn, true, "Creating account…");
+    try{
+      await signup(name.value.trim(), email.value.trim(), pass.value);
+      toast("Account created — welcome to MovieZen!", "success");
+      closeModal($("#authModal"));
+      e.target.reset();
+    }catch(err){
+      toast(friendlyAuthError(err), "error");
+    }finally{ setBusy(btn, false); }
+  });
+}
+function friendlyAuthError(err){
+  const code = (err && err.code) || "";
+  if(code.includes("user-not-found") || code.includes("wrong-password") || code.includes("invalid-credential"))
+    return "Invalid email or password.";
+  if(code.includes("email-already-in-use")) return "That email is already registered.";
+  if(code.includes("weak-password")) return "Password is too weak (min 6 characters).";
+  if(code.includes("network")) return "Network error — check your connection.";
+  return (err && err.message) ? err.message : "Something went wrong.";
+}
+
+/* ==========================================================================
+   Event Listeners / bootstrap
+   ========================================================================== */
+window.addEventListener("DOMContentLoaded", () => {
+  // skeleton placeholders while Firebase loads
+  ["#gridLatest","#gridTrending","#gridRecommended","#gridAll"].forEach(s => {
+    const g = $(s); if(g){ g.innerHTML = skeletonHTML(10); g.setAttribute("aria-busy","true"); }
+  });
+
+  // theme first (avoid flash)
+  applyTheme(currentThemePref());
+  syncThemeSeg();
+  window.matchMedia("(prefers-color-scheme: light)").addEventListener?.("change", () => {
+    if(currentThemePref() === "system") applyTheme("system");
+  });
+
+  // favorites
+  favorites = loadFavorites();
+
+  // Firebase
+  const ok = initializeFirebase();
+  if(!ok){
+    $("#loading").classList.add("hide");
+    setTimeout(() => $("#loading").remove(), 500);
+  }
+
+  // hide loading after a short warm-up (or when data arrives)
+  setTimeout(() => {
+    const l = $("#loading");
+    if(l){ l.classList.add("hide"); setTimeout(() => l.remove(), 500); }
+  }, 1200);
+
+  bindCarousel();
+  bindModals();
+  bindAuthForms();
+  bindStars();
+
+  // carousel controls keyboard
+  document.addEventListener("keydown", e => {
+    if($(".overlay.open")) return;
+    if(currentView !== "home") return;
+    if(e.key === "ArrowRight"){ stopAuto(); nextSlide(); startAuto(); }
+    if(e.key === "ArrowLeft"){ stopAuto(); prevSlide(); startAuto(); }
+  });
+
+  // nav bindings
+  $$("[data-nav]").forEach(b => b.addEventListener("click", () => handleNav(b.dataset.nav)));
+
+  // logo → home
+  $("#logoHome").addEventListener("click", e => { e.preventDefault(); handleNav("home"); });
+
+  // drawer
+  $("#menuBtn").addEventListener("click", openDrawer);
+  $("#drawerClose").addEventListener("click", closeDrawer);
+  $("#drawerBackdrop").addEventListener("click", closeDrawer);
+
+  // header search
+  $("#globalSearch").addEventListener("input", e => onSearchInput(e.target.value, "header"));
+  $("#viewSearch").addEventListener("input", e => onSearchInput(e.target.value, "view"));
+  $("#clearSearch").addEventListener("click", () => { setQuery(""); renderSearchView(); $("#globalSearch").focus(); });
+
+  // genre chips (delegated)
+  ["#chipsHome","#chipsMovies"].forEach(sel => {
+    $(sel).addEventListener("click", e => {
+      const chip = e.target.closest(".chip");
+      if(!chip) return;
+      activeGenre = chip.dataset.genre;
+      renderChips();
+      renderHome(); renderMoviesView(); renderSearchView();
+      if(currentView !== "movies") showView("movies");
+    });
+  });
+
+  // top actions
+  $("#favTopBtn").addEventListener("click", () => handleNav("favorites"));
+  $("#profileBtn").addEventListener("click", () => {
+    if(currentUser) openSettings();
+    else openModal($("#authModal"));
+  });
+  $("#themeQuickBtn").addEventListener("click", () => {
+    const mode = document.documentElement.getAttribute("data-theme");
+    setTheme(mode === "dark" ? "light" : "dark");
+  });
+
+  // detail modal actions
+  $("#btnPlay").addEventListener("click", () => {
+    if(currentDetail && currentDetail.playUrl) playMovie(currentDetail.playUrl);
+  });
+  $("#btnDownload").addEventListener("click", () => {
+    if(currentDetail && currentDetail.downloadUrl){
+      window.open(currentDetail.downloadUrl, "_blank", "noopener");
+    }
+  });
+  $("#btnFav").addEventListener("click", () => {
+    if(currentDetail) toggleFavorite(currentDetail, null);
+  });
+  $("#btnReport").addEventListener("click", () => {
+    if(currentDetail) reportBrokenLink(currentDetail);
+  });
+  $("#playerClose").addEventListener("click", closePlayer);
+
+  // settings
+  $("#themeSeg").addEventListener("click", e => {
+    const b = e.target.closest("[data-theme-opt]");
+    if(b) setTheme(b.dataset.themeOpt);
+  });
+  $("#setFavView").addEventListener("click", () => { closeModal($("#settingsModal")); handleNav("favorites"); });
+  $("#setAccountAction").addEventListener("click", () => {
+    if(currentUser) logout();
+    else { closeModal($("#settingsModal")); openModal($("#authModal")); }
+  });
+
+  // start carousel rotation
+  startAuto();
+  // pause when tab hidden
+  document.addEventListener("visibilitychange", () => {
+    document.hidden ? stopAuto() : startAuto();
+  });
+});
+
+// expose for console usage
+window.seedDemoData = seedDemoData;
+</script>
+</body>
+</html>

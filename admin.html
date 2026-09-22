@@ -1,0 +1,1595 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="description" content="MovieZen Admin v1.0.0 — content management by Umaiz Sufiyan">
+<meta name="theme-color" content="#0B0C0E">
+<title>MovieZen — Admin Panel</title>
+
+<!--
+  ============================================================================
+  MovieZen v1.0.0 — Admin Panel (single-file app)
+  Creator: Umaiz Sufiyan
+  ----------------------------------------------------------------------------
+  FIREBASE SETUP (same project as user.html)
+  1. Same firebaseConfig as user.html (paste below).
+  2. Authentication → Email/Password enabled.
+  3. Realtime Database enabled. Recommended rules:
+       { "rules": {
+           ".read": true,
+           "movies":   { ".write": "auth != null" },
+           "reports":  { ".write": "auth != null" },
+           "users":    { ".write": "auth != null && auth.uid === $uid" }
+       } }
+  4. Create your admin account via Sign Up on the login screen (first account).
+  5. Open this file in a browser.
+
+  USAGE
+  - Login → Dashboard: library summary
+  - Movies: Add / Edit / Delete / Search movies (real-time sync)
+  - Reports: resolve or dismiss user broken-link reports
+  - Settings: theme (Dark/Light/System), account, about
+  ============================================================================
+-->
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" referrerpolicy="no-referrer">
+
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+
+<style>
+/* ============================= TOKENS ============================= */
+:root{
+  --bg:#0B0C0E; --surface:#121417; --elevated:#181B20; --card:#1D2025;
+  --border:#2A2E35; --text:#F5F5F5; --text2:#A7ABB2; --muted:#737982;
+  --accent:#E8A83E; --accent-hover:#F2BC5A; --accent-fg:#1A1105; --accent-ink:#E8A83E;
+  --success:#45D483; --error:#FF6B6B; --blue:#3B82F6; --blue-strong:#2563EB;
+  --topbar-bg:rgba(11,12,14,.88);
+  --shadow-1:0 4px 24px rgba(0,0,0,.45);
+  --shadow-2:0 16px 48px rgba(0,0,0,.6);
+  --r-sm:8px; --r:12px; --r-card:16px; --r-lg:20px;
+  --header-h:64px; --sidebar-w:248px;
+  --ease:cubic-bezier(.2,.7,.3,1);
+  --font:'Inter',system-ui,-apple-system,sans-serif;
+  --display:'Space Grotesk','Inter',sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,monospace;
+}
+html[data-theme="light"]{
+  --bg:#F4F5F7; --surface:#FFFFFF; --elevated:#FFFFFF; --card:#FFFFFF;
+  --border:#E3E6EB; --text:#14161A; --text2:#4C525C; --muted:#6E7681;
+  --accent-ink:#8A6418; --success:#1E9E63; --error:#D64545;
+  --topbar-bg:rgba(255,255,255,.9);
+  --shadow-1:0 4px 24px rgba(20,22,26,.08);
+  --shadow-2:0 16px 48px rgba(20,22,26,.14);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+body{
+  font-family:var(--font);background:var(--bg);color:var(--text);
+  min-height:100dvh;line-height:1.55;-webkit-font-smoothing:antialiased;
+}
+img{max-width:100%;display:block}
+button{font-family:inherit;color:inherit;cursor:pointer;background:none;border:none}
+a{color:inherit;text-decoration:none}
+input,textarea,select{font-family:inherit;font-size:16px}
+ul{list-style:none}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.hidden{display:none!important}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
+}
+
+/* ============================= LOADING ============================= */
+#loading{
+  position:fixed;inset:0;z-index:1000;background:var(--bg);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;
+  transition:opacity .4s ease;
+}
+#loading.hide{opacity:0;pointer-events:none}
+.load-mark{display:flex;align-items:center;gap:12px}
+.load-mark i{font-size:34px;color:var(--accent)}
+.load-mark span{font-family:var(--display);font-size:28px;font-weight:700;letter-spacing:-.5px}
+.load-mark .adm{
+  font-size:11px;font-family:var(--mono);letter-spacing:2px;color:var(--accent);
+  border:1px solid rgba(232,168,62,.5);padding:3px 8px;border-radius:6px;text-transform:uppercase;
+}
+.spinner{width:38px;height:38px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+.spinner.sm{width:18px;height:18px;border-width:2px}
+@keyframes spin{to{transform:rotate(360deg)}}
+#loading p{color:var(--muted);font-size:13px;letter-spacing:.4px;text-transform:uppercase}
+
+/* ============================= TOAST ============================= */
+#toastHost{position:fixed;top:16px;right:16px;z-index:1200;display:flex;flex-direction:column;gap:8px;align-items:flex-end;pointer-events:none;width:min(92vw,380px)}
+.toast{
+  pointer-events:auto;display:flex;align-items:center;gap:10px;
+  background:var(--elevated);border:1px solid var(--border);border-radius:var(--r);
+  padding:12px 16px;box-shadow:var(--shadow-1);color:var(--text);font-size:14px;
+  animation:toastIn .25s var(--ease);max-width:100%;
+}
+.toast.success i{color:var(--success)}
+.toast.error i{color:var(--error)}
+.toast.info i{color:var(--blue)}
+.toast.out{animation:toastOut .25s var(--ease) forwards}
+@keyframes toastIn{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:none}}
+@keyframes toastOut{to{opacity:0;transform:translateX(16px)}}
+
+/* ============================= LOGIN SCREEN ============================= */
+#loginScreen{
+  position:fixed;inset:0;z-index:500;background:var(--bg);
+  display:flex;align-items:center;justify-content:center;padding:20px;
+}
+#loginScreen.hide{display:none}
+.login-card{
+  width:min(420px,100%);background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-lg);padding:36px 32px;box-shadow:var(--shadow-2);
+}
+.login-card .logo{display:flex;align-items:center;justify-content:center;gap:10px;font-family:var(--display);font-size:24px;font-weight:700;letter-spacing:-.4px}
+.login-card .logo i{color:var(--accent);font-size:22px}
+.login-card .logo .z{color:var(--accent)}
+.login-card .adm-badge{
+  display:block;width:max-content;margin:14px auto 0;font-family:var(--mono);font-size:11px;
+  letter-spacing:2px;color:var(--accent);background:rgba(232,168,62,.12);
+  border:1px solid rgba(232,168,62,.4);padding:4px 10px;border-radius:6px;text-transform:uppercase;
+}
+.login-card > p.sub{color:var(--muted);font-size:14px;text-align:center;margin:16px 0 26px}
+.tabs{display:flex;gap:0;margin-bottom:24px;border-bottom:1px solid var(--border)}
+.tabs button{flex:1;padding:12px 8px;font-size:14.5px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;transition:.2s;min-height:46px}
+.tabs button.active{color:var(--text);border-bottom-color:var(--accent)}
+.field{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
+.field label{font-size:13px;font-weight:500;color:var(--text2)}
+.field input,.field select,.field textarea{
+  background:var(--bg);border:1px solid var(--border);border-radius:var(--r);
+  padding:12px 14px;color:var(--text);transition:border-color .2s,box-shadow .2s;width:100%;
+}
+.field input,.field select{height:46px;padding:0 14px}
+.field textarea{min-height:110px;resize:vertical;padding:12px 14px;line-height:1.6}
+.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(232,168,62,.16)}
+.field input.err,.field select.err,.field textarea.err{border-color:var(--error)}
+.field .msg{font-size:12.5px;color:var(--error);display:none}
+.field.err-on .msg{display:block}
+.field .hint{font-size:12.5px;color:var(--muted)}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:9px;
+  min-height:46px;padding:0 22px;border-radius:var(--r);font-size:15px;font-weight:600;
+  transition:.2s;border:1px solid transparent;white-space:nowrap;
+}
+.btn:active{transform:scale(.98)}
+.btn:disabled{opacity:.55;pointer-events:none}
+.btn-block{width:100%}
+.btn-accent{background:var(--accent);color:var(--accent-fg)}
+.btn-accent:hover{background:var(--accent-hover)}
+.btn-ghost{background:transparent;color:var(--text2);border-color:var(--border)}
+.btn-ghost:hover{color:var(--text);border-color:var(--muted)}
+.btn-success{background:rgba(69,212,131,.14);color:var(--success);border-color:rgba(69,212,131,.35)}
+.btn-success:hover{background:rgba(69,212,131,.24)}
+html[data-theme="light"] .btn-success{background:rgba(30,158,99,.12);color:#1E9E63}
+.btn-danger{background:rgba(255,107,107,.12);color:var(--error);border-color:rgba(255,107,107,.35)}
+.btn-danger:hover{background:rgba(255,107,107,.22)}
+.btn-sm{min-height:38px;padding:0 14px;font-size:13.5px;border-radius:var(--r-sm)}
+.auth-switch{text-align:center;margin-top:18px;color:var(--muted);font-size:14px}
+.auth-switch button{color:var(--accent-ink);font-weight:600}
+.auth-switch button:hover{text-decoration:underline}
+
+/* ============================= APP SHELL ============================= */
+#app{display:none;min-height:100dvh}
+#app.ready{display:block}
+
+/* --- Sidebar (desktop) --- */
+.sidebar{
+  position:fixed;top:0;left:0;bottom:0;width:var(--sidebar-w);z-index:120;
+  background:var(--surface);border-right:1px solid var(--border);
+  display:none;flex-direction:column;padding:20px 14px;
+}
+@media(min-width:1025px){.sidebar{display:flex}}
+.sidebar .brand{display:flex;align-items:center;gap:10px;font-family:var(--display);font-weight:700;font-size:19px;letter-spacing:-.4px;padding:6px 10px 4px}
+.sidebar .brand i{color:var(--accent);font-size:18px}
+.sidebar .brand .z{color:var(--accent)}
+.sidebar .adm-tag{
+  font-family:var(--mono);font-size:10px;letter-spacing:1.5px;color:var(--accent);
+  background:rgba(232,168,62,.1);border:1px solid rgba(232,168,62,.35);
+  padding:2px 7px;border-radius:5px;text-transform:uppercase;margin-left:auto;
+}
+.sidebar nav{display:flex;flex-direction:column;gap:4px;margin-top:22px;flex:1}
+.sidebar nav button{
+  display:flex;align-items:center;gap:13px;padding:12px 14px;border-radius:var(--r);
+  color:var(--text2);font-size:14.5px;font-weight:500;text-align:left;min-height:46px;
+  transition:background .2s,color .2s;position:relative;
+}
+.sidebar nav button i{width:20px;text-align:center;color:var(--muted);font-size:15px;transition:color .2s}
+.sidebar nav button:hover{background:var(--elevated);color:var(--text)}
+.sidebar nav button.active{background:var(--elevated);color:var(--text);font-weight:600}
+.sidebar nav button.active i{color:var(--accent)}
+.sidebar nav button.active::before{
+  content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;
+  background:var(--accent);border-radius:0 3px 3px 0;
+}
+.nav-count{
+  margin-left:auto;min-width:22px;height:20px;padding:0 6px;border-radius:999px;
+  background:var(--error);color:#fff;font-size:11px;font-weight:700;
+  display:grid;place-items:center;font-family:var(--mono);
+}
+.sidebar-foot{border-top:1px solid var(--border);padding-top:14px;display:flex;flex-direction:column;gap:4px}
+.sidebar-foot button{
+  display:flex;align-items:center;gap:13px;padding:11px 14px;border-radius:var(--r);
+  color:var(--text2);font-size:14px;min-height:44px;transition:.2s;
+}
+.sidebar-foot button:hover{background:var(--elevated);color:var(--text)}
+.sidebar-foot .ver{font-family:var(--mono);font-size:11px;color:var(--muted);text-align:center;padding:10px 0 2px}
+
+/* --- Topbar (mobile header + desktop workspace bar) --- */
+.topbar{
+  position:sticky;top:0;z-index:100;height:var(--header-h);
+  display:flex;align-items:center;gap:14px;padding:0 16px;
+  background:var(--topbar-bg);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--border);
+}
+@media(min-width:1025px){.topbar{padding-left:calc(var(--sidebar-w) + 24px)}}
+.menu-btn{width:44px;height:44px;display:grid;place-items:center;border-radius:var(--r-sm);color:var(--text2);font-size:17px}
+.menu-btn:hover{background:var(--elevated);color:var(--text)}
+@media(min-width:1025px){.menu-btn{display:none}}
+.topbar .mobile-brand{display:flex;align-items:center;gap:9px;font-family:var(--display);font-weight:700;font-size:18px;letter-spacing:-.3px}
+.topbar .mobile-brand i{color:var(--accent);font-size:16px}
+@media(min-width:1025px){.topbar .mobile-brand{display:none}}
+.topbar h1{font-family:var(--display);font-size:17px;font-weight:700;letter-spacing:-.3px;display:none}
+@media(min-width:1025px){.topbar h1{display:block}}
+.top-right{margin-left:auto;display:flex;align-items:center;gap:6px}
+.icon-btn{width:44px;height:44px;display:grid;place-items:center;border-radius:var(--r-sm);color:var(--text2);font-size:16px;transition:.2s}
+.icon-btn:hover{color:var(--text);background:var(--elevated)}
+.admin-chip{
+  display:none;align-items:center;gap:9px;padding:6px 12px 6px 6px;border-radius:999px;
+  background:var(--elevated);border:1px solid var(--border);font-size:13.5px;color:var(--text2);
+}
+@media(min-width:601px){.admin-chip{display:flex}}
+.admin-chip .dot{width:26px;height:26px;border-radius:50%;background:var(--accent);color:var(--accent-fg);display:grid;place-items:center;font-weight:700;font-size:13px}
+
+/* --- Drawer (mobile nav) --- */
+.drawer-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200;opacity:0;pointer-events:none;transition:opacity .25s}
+.drawer-backdrop.open{opacity:1;pointer-events:auto}
+.drawer{
+  position:fixed;top:0;left:0;bottom:0;width:min(280px,85vw);z-index:210;
+  background:var(--surface);border-right:1px solid var(--border);
+  transform:translateX(-100%);transition:transform .3s var(--ease);
+  padding:18px 14px;display:flex;flex-direction:column;overflow-y:auto;
+}
+.drawer.open{transform:none}
+.drawer .brand{display:flex;align-items:center;gap:10px;font-family:var(--display);font-weight:700;font-size:19px;padding:6px 10px}
+.drawer .brand i{color:var(--accent);font-size:18px}
+.drawer .brand .z{color:var(--accent)}
+.drawer nav{display:flex;flex-direction:column;gap:4px;margin-top:20px;flex:1}
+.drawer nav button{display:flex;align-items:center;gap:13px;padding:13px 14px;border-radius:var(--r);color:var(--text2);font-size:15px;font-weight:500;text-align:left;min-height:48px;transition:.2s}
+.drawer nav button i{width:20px;text-align:center;color:var(--muted)}
+.drawer nav button:hover,.drawer nav button.active{background:var(--elevated);color:var(--text)}
+.drawer nav button.active i{color:var(--accent)}
+.drawer .drawer-foot{border-top:1px solid var(--border);padding-top:12px;display:flex;flex-direction:column;gap:4px}
+.drawer .drawer-foot button{display:flex;align-items:center;gap:13px;padding:12px 14px;border-radius:var(--r);color:var(--text2);font-size:14.5px;min-height:46px}
+.drawer .drawer-foot button:hover{background:var(--elevated);color:var(--text)}
+
+/* --- Workspace --- */
+.workspace{padding:24px 16px 48px;max-width:1280px;margin:0 auto}
+@media(min-width:768px){.workspace{padding:28px 28px 56px}}
+@media(min-width:1025px){.workspace{margin-left:0;padding-left:calc(var(--sidebar-w) + 28px);max-width:calc(1280px + var(--sidebar-w))}}
+@media(min-width:1441px){.workspace{padding-left:calc(var(--sidebar-w) + 40px)}}
+
+.page{display:none}
+.page.active{display:block;animation:fadeIn .25s var(--ease)}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.page-head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px;margin-bottom:24px}
+.page-head h2{font-family:var(--display);font-size:26px;font-weight:700;letter-spacing:-.5px}
+.page-head p{color:var(--muted);font-size:14px;margin-top:4px}
+
+/* ============================= DASHBOARD ============================= */
+.stat-grid{display:grid;gap:14px;grid-template-columns:repeat(2,1fr)}
+@media(min-width:768px){.stat-grid{grid-template-columns:repeat(4,1fr)}}
+.stat{
+  background:var(--card);border:1px solid var(--border);border-radius:var(--r-card);
+  padding:20px;display:flex;flex-direction:column;gap:10px;transition:border-color .2s;
+}
+.stat:hover{border-color:rgba(232,168,62,.35)}
+.stat .ico{width:40px;height:40px;border-radius:var(--r);background:var(--elevated);border:1px solid var(--border);display:grid;place-items:center;color:var(--accent);font-size:16px}
+.stat .val{font-family:var(--display);font-size:30px;font-weight:700;letter-spacing:-1px;line-height:1}
+.stat .lbl{color:var(--muted);font-size:13px;font-weight:500}
+.quick-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:24px}
+.dash-recent{margin-top:32px}
+.dash-recent h3,.panel-title{font-family:var(--display);font-size:18px;font-weight:700;letter-spacing:-.3px;margin-bottom:14px}
+
+/* mini list */
+.mini-list{display:flex;flex-direction:column;gap:10px}
+.mini-item{
+  display:flex;align-items:center;gap:14px;background:var(--card);border:1px solid var(--border);
+  border-radius:var(--r-card);padding:12px 14px;transition:border-color .2s;
+}
+.mini-item:hover{border-color:rgba(232,168,62,.3)}
+.mini-item .thumb{width:44px;height:66px;border-radius:var(--r-sm);object-fit:cover;background:var(--elevated);flex-shrink:0}
+.mini-item .info{flex:1;min-width:0}
+.mini-item .info h4{font-size:14.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mini-item .info p{font-size:12.5px;color:var(--muted);margin-top:2px}
+.mini-item .rating{display:inline-flex;align-items:center;gap:5px;font-size:13px;color:var(--text2);white-space:nowrap}
+.mini-item .rating i{color:var(--accent);font-size:12px}
+
+/* ============================= FORM / PANEL ============================= */
+.panel{
+  background:var(--card);border:1px solid var(--border);border-radius:var(--r-card);
+  padding:24px;margin-bottom:28px;
+}
+@media(min-width:768px){.panel{padding:28px}}
+.panel-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-bottom:22px}
+.panel-head h3{font-family:var(--display);font-size:19px;font-weight:700;letter-spacing:-.3px}
+.edit-flag{
+  display:none;align-items:center;gap:7px;font-size:12.5px;font-weight:600;
+  background:rgba(232,168,62,.12);border:1px solid rgba(232,168,62,.4);color:var(--accent-ink);
+  padding:5px 11px;border-radius:999px;
+}
+.edit-flag.on{display:inline-flex}
+.form-grid{display:grid;gap:16px;grid-template-columns:1fr}
+@media(min-width:768px){
+  .form-grid{grid-template-columns:1fr 1fr}
+  .form-grid .full{grid-column:1/-1}
+}
+.form-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px;padding-top:20px;border-top:1px solid var(--border)}
+#formMsg{display:none;margin-bottom:18px;padding:12px 16px;border-radius:var(--r);font-size:14px;align-items:center;gap:10px}
+#formMsg.show{display:flex}
+#formMsg.success{background:rgba(69,212,131,.12);border:1px solid rgba(69,212,131,.4);color:var(--success)}
+#formMsg.error{background:rgba(255,107,107,.1);border:1px solid rgba(255,107,107,.4);color:var(--error)}
+html[data-theme="light"] #formMsg.success{color:#1E9E63}
+
+/* poster preview in form */
+.poster-preview{
+  width:96px;height:144px;border-radius:var(--r);object-fit:cover;background:var(--elevated);
+  border:1px solid var(--border);display:none;
+}
+.poster-preview.on{display:block}
+
+/* ============================= MANAGE MOVIES ============================= */
+.toolbar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:18px}
+.search-box{
+  position:relative;flex:1;min-width:220px;display:flex;align-items:center;
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+  padding:0 14px;min-height:46px;transition:border-color .2s;
+}
+.search-box:focus-within{border-color:var(--accent)}
+.search-box i{color:var(--muted);font-size:14px}
+.search-box input{flex:1;border:none;background:none;color:var(--text);padding:0 12px;min-width:0;height:44px}
+.search-box input:focus{outline:none}
+.search-box input::placeholder{color:var(--muted)}
+.filter-select{
+  height:46px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+  color:var(--text);padding:0 14px;min-width:150px;cursor:pointer;
+}
+.filter-select:focus{outline:none;border-color:var(--accent)}
+
+.movie-list{display:flex;flex-direction:column;gap:12px}
+.mrow{
+  display:flex;gap:16px;background:var(--card);border:1px solid var(--border);
+  border-radius:var(--r-card);padding:14px;transition:border-color .2s,transform .2s,box-shadow .2s;
+}
+.mrow:hover{border-color:rgba(232,168,62,.3);box-shadow:var(--shadow-1)}
+.mrow .thumb{
+  width:80px;height:120px;border-radius:var(--r-sm);object-fit:cover;background:var(--elevated);
+  flex-shrink:0;border:1px solid var(--border);
+}
+.mrow .body{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px}
+.mrow h4{font-size:16px;font-weight:600;line-height:1.3}
+.mrow .meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.tag{
+  display:inline-flex;align-items:center;gap:6px;padding:4px 11px;border-radius:999px;
+  background:var(--elevated);border:1px solid var(--border);color:var(--text2);font-size:12px;font-weight:500;
+}
+.tag.gold{background:rgba(232,168,62,.12);border-color:rgba(232,168,62,.4);color:var(--accent-ink)}
+.tag.play{background:rgba(59,130,246,.12);border-color:rgba(59,130,246,.4);color:var(--blue)}
+.tag.dl{background:rgba(69,212,131,.12);border-color:rgba(69,212,131,.4);color:var(--success)}
+html[data-theme="light"] .tag.dl{color:#1E9E63}
+.mrow .desc{
+  color:var(--muted);font-size:13.5px;line-height:1.55;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+}
+.mrow .row-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:auto;padding-top:6px}
+.mrow .row-actions .btn{flex:0 1 auto}
+@media(max-width:520px){
+  .mrow{flex-direction:row}
+  .mrow .thumb{width:64px;height:96px}
+  .mrow .row-actions .btn{flex:1 1 calc(50% - 4px)}
+}
+.result-note{color:var(--muted);font-size:13.5px;margin-bottom:14px;font-family:var(--mono)}
+
+/* empty state */
+.empty{
+  text-align:center;padding:56px 20px;color:var(--muted);
+  display:flex;flex-direction:column;align-items:center;gap:14px;
+  background:var(--card);border:1px dashed var(--border);border-radius:var(--r-card);
+}
+.empty i{font-size:40px;color:var(--border)}
+.empty h3{font-family:var(--display);font-size:18px;color:var(--text2);font-weight:600}
+.empty p{font-size:14px;max-width:360px;line-height:1.6}
+
+/* skeleton */
+.skel-row{
+  background:var(--card);border:1px solid var(--border);border-radius:var(--r-card);
+  padding:14px;display:flex;gap:16px;
+}
+.skel-b{background:linear-gradient(90deg,var(--elevated) 25%,var(--border) 50%,var(--elevated) 75%);background-size:200% 100%;animation:shimmer 1.4s infinite;border-radius:6px}
+.skel-p{width:80px;height:120px;border-radius:var(--r-sm);flex-shrink:0}
+.skel-lines{flex:1;display:flex;flex-direction:column;gap:10px;padding-top:6px}
+@keyframes shimmer{to{background-position:-200% 0}}
+
+/* ============================= REPORTS ============================= */
+.report-list{display:flex;flex-direction:column;gap:12px}
+.report{
+  background:var(--card);border:1px solid var(--border);border-radius:var(--r-card);
+  padding:16px 18px;display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start;
+  transition:border-color .2s;
+}
+.report:hover{border-color:rgba(232,168,62,.3)}
+.report .r-main{flex:1;min-width:220px}
+.report h4{font-size:15.5px;font-weight:600;margin-bottom:8px}
+.report .r-meta{display:flex;flex-wrap:wrap;gap:8px 16px;font-size:12.5px;color:var(--muted);font-family:var(--mono)}
+.report .r-meta span b{color:var(--text2);font-weight:500}
+.report .r-actions{display:flex;gap:8px;flex-wrap:wrap}
+.status-pill{
+  display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;
+  padding:4px 10px;border-radius:999px;
+}
+.status-pill.open{background:rgba(255,107,107,.12);border:1px solid rgba(255,107,107,.4);color:var(--error)}
+.reason-tag{font-size:13px;color:var(--text2);margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.reason-tag i{color:var(--accent);font-size:12px}
+
+/* ============================= SETTINGS ============================= */
+.settings-grid{display:flex;flex-direction:column;gap:14px}
+.set-card{
+  display:flex;align-items:center;gap:16px;padding:18px;background:var(--card);
+  border:1px solid var(--border);border-radius:var(--r-card);flex-wrap:wrap;
+}
+.set-card .ico{
+  width:46px;height:46px;border-radius:var(--r);background:var(--elevated);border:1px solid var(--border);
+  display:grid;place-items:center;color:var(--accent);font-size:17px;flex-shrink:0;
+}
+.set-card .txt{flex:1;min-width:200px}
+.set-card .txt h4{font-size:15.5px;font-weight:600}
+.set-card .txt p{font-size:13.5px;color:var(--muted);line-height:1.5;margin-top:2px}
+.set-card .act{flex-shrink:0}
+.seg{display:flex;background:var(--elevated);border:1px solid var(--border);border-radius:var(--r-sm);padding:3px;gap:2px}
+.seg button{padding:8px 14px;border-radius:6px;font-size:13.5px;font-weight:500;color:var(--muted);min-height:38px;transition:.2s}
+.seg button.active{background:var(--accent);color:var(--accent-fg);font-weight:600}
+.about-box{
+  text-align:center;padding:36px 20px;color:var(--muted);font-size:14px;
+  background:var(--card);border:1px solid var(--border);border-radius:var(--r-card);
+}
+.about-box .logo{display:flex;align-items:center;justify-content:center;gap:10px;font-family:var(--display);font-size:22px;font-weight:700;color:var(--text);margin-bottom:10px}
+.about-box .logo i{color:var(--accent);font-size:20px}
+.about-box .logo .z{color:var(--accent)}
+.about-box .mono{font-family:var(--mono);font-size:12px;color:var(--border);margin-top:8px}
+html[data-theme="light"] .about-box .mono{color:var(--muted)}
+
+/* ============================= CONFIRM DIALOG ============================= */
+.overlay{
+  position:fixed;inset:0;z-index:600;background:rgba(4,5,6,.72);
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  display:flex;align-items:center;justify-content:center;padding:20px;
+  opacity:0;pointer-events:none;transition:opacity .25s var(--ease);
+}
+.overlay.open{opacity:1;pointer-events:auto}
+.modal{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
+  width:min(440px,100%);padding:28px;box-shadow:var(--shadow-2);
+  transform:translateY(16px) scale(.98);transition:transform .3s var(--ease);
+}
+.overlay.open .modal{transform:none}
+.modal .ico{
+  width:52px;height:52px;border-radius:50%;display:grid;place-items:center;
+  background:rgba(255,107,107,.12);color:var(--error);font-size:20px;margin-bottom:16px;
+}
+.modal h3{font-family:var(--display);font-size:20px;font-weight:700;letter-spacing:-.3px;margin-bottom:8px}
+.modal p{color:var(--text2);font-size:14.5px;line-height:1.6;margin-bottom:22px}
+.modal .m-actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+.modal .m-actions .btn{flex:1;min-width:130px}
+@media(min-width:420px){.modal .m-actions .btn{flex:0 0 auto}}
+</style>
+</head>
+
+<body>
+
+<!-- ============================= LOADING ============================= -->
+<div id="loading" role="status" aria-live="polite">
+  <div class="load-mark">
+    <i class="fa-solid fa-clapperboard"></i>
+    <span>Movie<span class="z">Zen</span></span>
+    <span class="adm">Admin</span>
+  </div>
+  <div class="spinner" aria-hidden="true"></div>
+  <p>Initializing control room…</p>
+</div>
+
+<!-- ============================= TOASTS ============================= -->
+<div id="toastHost" aria-live="polite"></div>
+
+<!-- ============================= LOGIN SCREEN ============================= -->
+<div id="loginScreen">
+  <div class="login-card">
+    <span class="logo"><i class="fa-solid fa-clapperboard"></i>Movie<span class="z">Zen</span></span>
+    <span class="adm-badge">Admin Panel</span>
+    <p class="sub" id="loginSub">Sign in to manage the MovieZen library</p>
+
+    <div class="tabs" role="tablist">
+      <button class="active" id="tabLogin" role="tab" aria-selected="true">Login</button>
+      <button id="tabSignup" role="tab" aria-selected="false">Sign Up</button>
+    </div>
+
+    <!-- LOGIN -->
+    <form id="loginForm" novalidate>
+      <div class="field">
+        <label for="loginEmail">Email Address</label>
+        <input id="loginEmail" type="email" placeholder="admin@example.com" autocomplete="email" required>
+        <span class="msg">Enter a valid email address.</span>
+      </div>
+      <div class="field">
+        <label for="loginPass">Password</label>
+        <input id="loginPass" type="password" placeholder="••••••••" autocomplete="current-password" required>
+        <span class="msg">Password must be at least 6 characters.</span>
+      </div>
+      <button class="btn btn-accent btn-block" type="submit" id="loginBtn"><i class="fa-solid fa-right-to-bracket"></i> Login</button>
+      <p class="auth-switch">First time here? <button type="button" id="goSignup">Create admin account</button></p>
+    </form>
+
+    <!-- SIGNUP -->
+    <form id="signupForm" novalidate hidden>
+      <div class="field">
+        <label for="suName">Full Name</label>
+        <input id="suName" type="text" placeholder="Admin name" autocomplete="name" required>
+        <span class="msg">Please enter your name.</span>
+      </div>
+      <div class="field">
+        <label for="suEmail">Email Address</label>
+        <input id="suEmail" type="email" placeholder="admin@example.com" autocomplete="email" required>
+        <span class="msg">Enter a valid email address.</span>
+      </div>
+      <div class="field">
+        <label for="suPass">Password</label>
+        <input id="suPass" type="password" placeholder="Min. 6 characters" autocomplete="new-password" required>
+        <span class="msg">Password must be at least 6 characters.</span>
+      </div>
+      <div class="field">
+        <label for="suPass2">Confirm Password</label>
+        <input id="suPass2" type="password" placeholder="Repeat password" autocomplete="new-password" required>
+        <span class="msg">Passwords do not match.</span>
+      </div>
+      <button class="btn btn-accent btn-block" type="submit" id="signupBtn"><i class="fa-solid fa-user-plus"></i> Create Account</button>
+      <p class="auth-switch">Already registered? <button type="button" id="goLogin">Login</button></p>
+    </form>
+  </div>
+</div>
+
+<!-- ============================= APP ============================= -->
+<div id="app">
+
+  <!-- SIDEBAR (desktop) -->
+  <aside class="sidebar" aria-label="Admin navigation">
+    <div class="brand">
+      <i class="fa-solid fa-clapperboard"></i>Movie<span class="z">Zen</span>
+      <span class="adm-tag">Admin</span>
+    </div>
+    <nav>
+      <button class="active" data-page="dashboard"><i class="fa-solid fa-gauge-high"></i>Dashboard</button>
+      <button data-page="movies"><i class="fa-solid fa-film"></i>Movies</button>
+      <button data-page="reports"><i class="fa-solid fa-flag"></i>Reports<span class="nav-count hidden" id="sideReportCount">0</span></button>
+      <button data-page="settings"><i class="fa-solid fa-gear"></i>Settings</button>
+    </nav>
+    <div class="sidebar-foot">
+      <button data-page="userapp"><i class="fa-solid fa-arrow-up-right-from-square"></i>Open User Panel</button>
+      <button id="logoutSide"><i class="fa-solid fa-right-from-bracket"></i>Logout</button>
+      <p class="ver">MovieZen v1.0.0</p>
+    </div>
+  </aside>
+
+  <!-- DRAWER (mobile) -->
+  <div class="drawer-backdrop" id="drawerBackdrop"></div>
+  <aside class="drawer" id="drawer" aria-label="Menu" aria-hidden="true">
+    <div class="brand"><i class="fa-solid fa-clapperboard"></i>Movie<span class="z">Zen</span></div>
+    <nav>
+      <button data-page="dashboard"><i class="fa-solid fa-gauge-high"></i>Dashboard</button>
+      <button data-page="movies"><i class="fa-solid fa-film"></i>Movies</button>
+      <button data-page="reports"><i class="fa-solid fa-flag"></i>Reports<span class="nav-count hidden" id="drawerReportCount">0</span></button>
+      <button data-page="settings"><i class="fa-solid fa-gear"></i>Settings</button>
+    </nav>
+    <div class="drawer-foot">
+      <button data-page="userapp"><i class="fa-solid fa-arrow-up-right-from-square"></i>Open User Panel</button>
+      <button id="logoutDrawer"><i class="fa-solid fa-right-from-bracket"></i>Logout</button>
+    </div>
+  </aside>
+
+  <!-- TOPBAR -->
+  <header class="topbar" role="banner">
+    <button class="menu-btn" id="menuBtn" aria-label="Open menu" aria-expanded="false"><i class="fa-solid fa-bars"></i></button>
+    <span class="mobile-brand"><i class="fa-solid fa-clapperboard"></i>MovieZen</span>
+    <h1 id="pageTitle">Dashboard</h1>
+    <div class="top-right">
+      <button class="icon-btn" id="themeQuickBtn" aria-label="Toggle theme" title="Toggle theme"><i class="fa-regular fa-moon"></i></button>
+      <span class="admin-chip" id="adminChip"><span class="dot" id="adminInitial">A</span><span id="adminName">Admin</span></span>
+      <button class="icon-btn" id="logoutTop" aria-label="Logout" title="Logout"><i class="fa-solid fa-right-from-bracket"></i></button>
+    </div>
+  </header>
+
+  <!-- WORKSPACE -->
+  <div class="workspace">
+
+    <!-- ============ DASHBOARD ============ -->
+    <section class="page active" id="page-dashboard" aria-label="Dashboard">
+      <div class="page-head">
+        <div>
+          <h2>Dashboard</h2>
+          <p>Library overview at a glance</p>
+        </div>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat">
+          <div class="ico"><i class="fa-solid fa-film"></i></div>
+          <span class="val" id="statMovies">0</span>
+          <span class="lbl">Total Movies</span>
+        </div>
+        <div class="stat">
+          <div class="ico"><i class="fa-solid fa-layer-group"></i></div>
+          <span class="val" id="statGenres">0</span>
+          <span class="lbl">Genres Used</span>
+        </div>
+        <div class="stat">
+          <div class="ico"><i class="fa-solid fa-flag"></i></div>
+          <span class="val" id="statReports">0</span>
+          <span class="lbl">Open Reports</span>
+        </div>
+        <div class="stat">
+          <div class="ico"><i class="fa-solid fa-star"></i></div>
+          <span class="val" id="statAvg">—</span>
+          <span class="lbl">Average Rating</span>
+        </div>
+      </div>
+
+      <div class="quick-row">
+        <button class="btn btn-accent btn-sm" data-page="movies" data-action="new"><i class="fa-solid fa-plus"></i> Add Movie</button>
+        <button class="btn btn-ghost btn-sm" data-page="movies"><i class="fa-solid fa-film"></i> Manage Movies</button>
+        <button class="btn btn-ghost btn-sm" data-page="reports"><i class="fa-solid fa-flag"></i> View Reports</button>
+      </div>
+
+      <div class="dash-recent" id="recentWrap" hidden>
+        <h3>Recently Added</h3>
+        <div class="mini-list" id="recentList"></div>
+      </div>
+    </section>
+
+    <!-- ============ MOVIES (form + manage) ============ -->
+    <section class="page" id="page-movies" aria-label="Movies">
+      <div class="page-head">
+        <div>
+          <h2>Movies</h2>
+          <p>Add, edit and manage the library — changes sync live</p>
+        </div>
+      </div>
+
+      <!-- Add/Edit Form -->
+      <div class="panel" id="movieFormPanel">
+        <div class="panel-head">
+          <h3 id="formTitle">Add New Movie</h3>
+          <span class="edit-flag" id="editFlag"><i class="fa-solid fa-pen"></i> Edit Mode</span>
+        </div>
+
+        <div id="formMsg" role="alert"></div>
+
+        <form id="movieForm" novalidate>
+          <div class="form-grid">
+            <div class="field">
+              <label for="fTitle">Movie Title *</label>
+              <input id="fTitle" type="text" placeholder="e.g. Neon Horizon" required>
+              <span class="msg">Title is required.</span>
+            </div>
+
+            <div class="field">
+              <label for="fGenre">Genre *</label>
+              <select id="fGenre" required>
+                <option value="">Select genre…</option>
+                <option>Action</option><option>Comedy</option><option>Drama</option>
+                <option>Horror</option><option>Sci-Fi</option><option>Romance</option>
+                <option>Thriller</option><option>Animation</option><option>Adventure</option>
+                <option>Fantasy</option>
+              </select>
+              <span class="msg">Please choose a genre.</span>
+            </div>
+
+            <div class="field">
+              <label for="fPoster">Poster Image URL *</label>
+              <input id="fPoster" type="url" placeholder="https://…/poster.jpg" required>
+              <span class="hint">Direct image link</span>
+              <span class="msg">Poster URL is required.</span>
+              <img class="poster-preview" id="posterPreview" alt="Poster preview">
+            </div>
+
+            <div class="field">
+              <label for="fPlay">Play Online URL *</label>
+              <input id="fPlay" type="url" placeholder="https://youtube.com/watch?v=…" required>
+              <span class="hint">Link to watch movie online (streaming URL)</span>
+              <span class="msg">Play URL is required.</span>
+            </div>
+
+            <div class="field">
+              <label for="fDownload">Download URL *</label>
+              <input id="fDownload" type="url" placeholder="https://…/movie.mp4" required>
+              <span class="hint">Direct download link for movie file</span>
+              <span class="msg">Download URL is required.</span>
+            </div>
+
+            <div class="field full">
+              <label for="fDesc">Description *</label>
+              <textarea id="fDesc" placeholder="Write a short synopsis (min 20 characters)…" style="min-height:100px" required></textarea>
+              <span class="msg">Description must be at least 20 characters.</span>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button class="btn btn-accent" type="submit" id="submitBtn"><i class="fa-solid fa-plus"></i> Add Movie</button>
+            <button class="btn btn-ghost" type="button" id="cancelBtn" hidden><i class="fa-solid fa-xmark"></i> Cancel</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Manage -->
+      <div class="panel">
+        <div class="panel-head">
+          <h3>Manage Movies</h3>
+        </div>
+
+        <div class="toolbar">
+          <div class="search-box">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <label class="sr-only" for="adminSearch">Search movies</label>
+            <input id="adminSearch" type="search" placeholder="Search by title or genre…" autocomplete="off">
+          </div>
+          <label class="sr-only" for="genreFilter">Filter by genre</label>
+          <select class="filter-select" id="genreFilter">
+            <option value="All">All genres</option>
+            <option>Action</option><option>Comedy</option><option>Drama</option>
+            <option>Horror</option><option>Sci-Fi</option><option>Romance</option>
+            <option>Thriller</option><option>Animation</option><option>Adventure</option>
+            <option>Fantasy</option>
+          </select>
+        </div>
+
+        <p class="result-note" id="resultNote"></p>
+        <div class="movie-list" id="movieList" aria-busy="true"></div>
+      </div>
+    </section>
+
+    <!-- ============ REPORTS ============ -->
+    <section class="page" id="page-reports" aria-label="Reports">
+      <div class="page-head">
+        <div>
+          <h2>Broken Link Reports</h2>
+          <p>User-reported playback &amp; download issues</p>
+        </div>
+      </div>
+      <div class="report-list" id="reportList" aria-busy="true"></div>
+    </section>
+
+    <!-- ============ SETTINGS ============ -->
+    <section class="page" id="page-settings" aria-label="Settings">
+      <div class="page-head">
+        <div>
+          <h2>Settings</h2>
+          <p>Appearance, account and about</p>
+        </div>
+      </div>
+
+      <div class="settings-grid">
+        <div class="set-card">
+          <div class="ico"><i class="fa-solid fa-circle-half-stroke"></i></div>
+          <div class="txt"><h4>Appearance</h4><p>Choose how the admin panel looks on this device.</p></div>
+          <div class="act">
+            <div class="seg" id="themeSeg" role="group" aria-label="Theme">
+              <button data-theme-opt="dark">Dark</button>
+              <button data-theme-opt="light">Light</button>
+              <button data-theme-opt="system">System</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="set-card">
+          <div class="ico"><i class="fa-solid fa-user-shield"></i></div>
+          <div class="txt"><h4>Account</h4><p id="setAccountDesc">Signed in</p></div>
+          <div class="act"><button class="btn btn-danger btn-sm" id="setLogout"><i class="fa-solid fa-right-from-bracket"></i> Logout</button></div>
+        </div>
+
+        <div class="set-card">
+          <div class="ico"><i class="fa-solid fa-database"></i></div>
+          <div class="txt"><h4>Firebase Project</h4><p id="setProject">movie-zen · Realtime Database</p></div>
+        </div>
+
+        <div class="about-box">
+          <div class="logo"><i class="fa-solid fa-clapperboard"></i>Movie<span class="z">Zen</span> Admin</div>
+          <div>Cinematic content management for the MovieZen platform</div>
+          <div class="mono">MovieZen v1.0.0 · © 2026 Umaiz Sufiyan</div>
+        </div>
+      </div>
+    </section>
+
+  </div><!-- /workspace -->
+</div><!-- /app -->
+
+<!-- ============================= CONFIRM DIALOG ============================= -->
+<div class="overlay" id="confirmModal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle" hidden>
+  <div class="modal">
+    <div class="ico"><i class="fa-solid fa-triangle-exclamation"></i></div>
+    <h3 id="confirmTitle">Delete movie?</h3>
+    <p id="confirmText">This action cannot be undone.</p>
+    <div class="m-actions">
+      <button class="btn btn-ghost" id="confirmCancel">Cancel</button>
+      <button class="btn btn-danger" id="confirmOk"><i class="fa-solid fa-trash"></i> Delete</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ==========================================================================
+   MovieZen v1.0.0 — Admin Panel
+   Creator: Umaiz Sufiyan
+   ========================================================================== */
+
+// ---------- Firebase Configuration ----------
+// Replace with your Firebase project credentials (databaseURL is required).
+const firebaseConfig = {
+  apiKey: "AIzaSyBrL-Xu7Iu8biNBR_bRd-Keg-VjqZ8C7as",
+  authDomain: "movie-zen.firebaseapp.com",
+  databaseURL: "https://movie-zen-default-rtdb.firebaseio.com",
+  projectId: "movie-zen",
+  storageBucket: "movie-zen.firebasestorage.app",
+  messagingSenderId: "299077323423",
+  appId: "1:299077323423:web:efd1ee51dbb55100b170aa",
+  measurementId: "G-NRNPLYPZS9"
+};
+
+// ---------- Global Variables ----------
+const GENRES = ["Action","Comedy","Drama","Horror","Sci-Fi","Romance","Thriller","Animation","Adventure","Fantasy"];
+let allMovies = [];
+let allReports = [];
+let currentUser = null;
+let editingId = null;          // movie id being edited (null = add mode)
+let currentPage = "dashboard";
+let adminSearchQ = "";
+let adminGenreFilter = "All";
+let searchTimer = null;
+let confirmAction = null;
+let db, auth;
+const THEME_KEY = "moviezen_theme";
+
+const $ = (s, r=document) => r.querySelector(s);
+const $$ = (s, r=document) => [...r.querySelectorAll(s)];
+
+/* ==========================================================================
+   Firebase Initialization
+   ========================================================================== */
+function initializeFirebase(){
+  try{
+    if(!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    auth = firebase.auth();
+    db = firebase.database();
+
+    // Auth state → show login or app
+    auth.onAuthStateChanged(user => {
+      currentUser = user;
+      if(user){
+        enterApp(user);
+      }else{
+        exitApp();
+      }
+    });
+
+    // Real-time movies
+    db.ref("movies").on("value", snap => {
+      const data = snap.val() || {};
+      allMovies = Object.entries(data)
+        .map(([id, m]) => ({ id, ...m }))
+        .sort((a,b) => (b.timestamp||0) - (a.timestamp||0));
+      if(currentUser) renderAll();
+    }, err => {
+      console.error("movies listener:", err);
+      toast("Could not load movies — check Firebase rules.", "error");
+      allMovies = [];
+      if(currentUser) renderAll();
+    });
+
+    // Real-time reports
+    db.ref("reports").on("value", snap => {
+      const data = snap.val() || {};
+      allReports = Object.entries(data)
+        .map(([id, r]) => ({ id, ...r }))
+        .sort((a,b) => (b.timestamp||0) - (a.timestamp||0));
+      if(currentUser) renderAll();
+    }, err => {
+      console.error("reports listener:", err);
+      allReports = [];
+      if(currentUser) renderAll();
+    });
+
+    return true;
+  }catch(err){
+    console.error("Firebase init failed:", err);
+    toast("Firebase failed to initialize.", "error");
+    return false;
+  }
+}
+
+/* ==========================================================================
+   Auth
+   ========================================================================== */
+function login(email, password){
+  return auth.signInWithEmailAndPassword(email, password);
+}
+function signup(name, email, password){
+  return auth.createUserWithEmailAndPassword(email, password).then(cred => {
+    return cred.user.updateProfile({ displayName: name }).then(() => {
+      return db.ref("users/" + cred.user.uid).set({
+        name, email, role: "admin",
+        createdAt: firebase.database.ServerValue.TIMESTAMP
+      });
+    });
+  });
+}
+function logout(){
+  return auth.signOut().then(() => toast("Logged out", "info"));
+}
+
+function enterApp(user){
+  $("#loginScreen").classList.add("hide");
+  $("#app").classList.add("ready");
+
+  const name = user.displayName || user.email || "Admin";
+  const initial = name.trim().charAt(0).toUpperCase();
+  $("#adminName").textContent = name;
+  $("#adminInitial").textContent = initial;
+  $("#setAccountDesc").textContent = `Signed in as ${user.email || name}`;
+  $("#setProject").textContent = `${firebaseConfig.projectId} · Realtime Database`;
+
+  // initial skeleton → real data
+  renderAll();
+}
+function exitApp(){
+  $("#app").classList.remove("ready");
+  $("#loginScreen").classList.remove("hide");
+  closeDrawer();
+  closeConfirm();
+  resetForm();
+}
+
+function bindAuthForms(){
+  const switchTab = which => {
+    const isLogin = which === "login";
+    $("#tabLogin").classList.toggle("active", isLogin);
+    $("#tabSignup").classList.toggle("active", !isLogin);
+    $("#tabLogin").setAttribute("aria-selected", isLogin);
+    $("#tabSignup").setAttribute("aria-selected", !isLogin);
+    $("#loginForm").hidden = !isLogin;
+    $("#signupForm").hidden = isLogin;
+    $("#loginSub").textContent = isLogin
+      ? "Sign in to manage the MovieZen library"
+      : "Create the first admin account for this project";
+  };
+  $("#tabLogin").addEventListener("click", () => switchTab("login"));
+  $("#tabSignup").addEventListener("click", () => switchTab("signup"));
+  $("#goSignup").addEventListener("click", () => switchTab("signup"));
+  $("#goLogin").addEventListener("click", () => switchTab("login"));
+
+  $("#loginForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const email = $("#loginEmail"), pass = $("#loginPass");
+    const emailBad = !/^\S+@\S+\.\S+$/.test(email.value.trim());
+    const passBad = pass.value.length < 6;
+    setFieldErr(email, emailBad); setFieldErr(pass, passBad);
+    if(emailBad || passBad) return;
+    const btn = $("#loginBtn");
+    setBusy(btn, true, "Signing in…");
+    try{
+      await login(email.value.trim(), pass.value);
+      toast("Welcome back, admin!", "success");
+      e.target.reset();
+    }catch(err){ toast(friendlyAuthError(err), "error"); }
+    finally{ setBusy(btn, false); }
+  });
+
+  $("#signupForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const name = $("#suName"), email = $("#suEmail"), pass = $("#suPass"), pass2 = $("#suPass2");
+    const nameBad = name.value.trim().length < 2;
+    const emailBad = !/^\S+@\S+\.\S+$/.test(email.value.trim());
+    const passBad = pass.value.length < 6;
+    const pass2Bad = pass2.value !== pass.value || pass.value.length < 6;
+    setFieldErr(name, nameBad); setFieldErr(email, emailBad);
+    setFieldErr(pass, passBad); setFieldErr(pass2, pass2Bad);
+    if(nameBad || emailBad || passBad || pass2Bad) return;
+    const btn = $("#signupBtn");
+    setBusy(btn, true, "Creating…");
+    try{
+      await signup(name.value.trim(), email.value.trim(), pass.value);
+      toast("Admin account created!", "success");
+      e.target.reset();
+    }catch(err){ toast(friendlyAuthError(err), "error"); }
+    finally{ setBusy(btn, false); }
+  });
+}
+function friendlyAuthError(err){
+  const code = (err && err.code) || "";
+  if(code.includes("user-not-found") || code.includes("wrong-password") || code.includes("invalid-credential"))
+    return "Invalid email or password.";
+  if(code.includes("email-already-in-use")) return "That email is already registered.";
+  if(code.includes("weak-password")) return "Password too weak (min 6 characters).";
+  if(code.includes("network")) return "Network error — check your connection.";
+  return (err && err.message) || "Something went wrong.";
+}
+
+/* ==========================================================================
+   Navigation (sidebar / drawer / pages)
+   ========================================================================== */
+function showPage(page){
+  if(page === "userapp"){
+    window.open("user.html", "_blank", "noopener");
+    closeDrawer();
+    return;
+  }
+  currentPage = page;
+  $$(".page").forEach(p => p.classList.toggle("active", p.id === "page-" + page));
+  $$("[data-page]").forEach(b => b.classList.toggle("active", b.dataset.page === page));
+  const titles = { dashboard:"Dashboard", movies:"Movies", reports:"Reports", settings:"Settings" };
+  $("#pageTitle").textContent = titles[page] || "Dashboard";
+  closeDrawer();
+  window.scrollTo({ top:0, behavior:"smooth" });
+
+  if(page === "movies" && location.hash !== "#movies") history.replaceState(null,"","#movies");
+  if(page !== "movies" && location.hash) history.replaceState(null,"",location.pathname);
+}
+
+function bindNav(){
+  $$("[data-page]").forEach(b => b.addEventListener("click", () => {
+    showPage(b.dataset.page);
+    if(b.dataset.action === "new"){
+      setTimeout(() => { resetForm(); $("#fTitle").focus(); }, 150);
+    }
+  }));
+
+  $("#menuBtn").addEventListener("click", openDrawer);
+  $("#drawerBackdrop").addEventListener("click", closeDrawer);
+
+  $("#logoutSide").addEventListener("click", logout);
+  $("#logoutDrawer").addEventListener("click", () => { closeDrawer(); logout(); });
+  $("#logoutTop").addEventListener("click", logout);
+  $("#setLogout").addEventListener("click", logout);
+}
+
+function openDrawer(){
+  $("#drawer").classList.add("open");
+  $("#drawerBackdrop").classList.add("open");
+  $("#drawer").setAttribute("aria-hidden","false");
+  $("#menuBtn").setAttribute("aria-expanded","true");
+}
+function closeDrawer(){
+  $("#drawer").classList.remove("open");
+  $("#drawerBackdrop").classList.remove("open");
+  $("#drawer").setAttribute("aria-hidden","true");
+  $("#menuBtn").setAttribute("aria-expanded","false");
+}
+
+/* ==========================================================================
+   Rendering — Dashboard
+   ========================================================================== */
+function renderDashboard(){
+  const total = allMovies.length;
+  const genresUsed = new Set(allMovies.map(m => m.genre).filter(Boolean)).size;
+  const reports = allReports.length;
+  const rated = allMovies.filter(m => m.ratingCount > 0);
+  const totalR = rated.reduce((s,m) => s + (m.ratingTotal||0), 0);
+  const countR = rated.reduce((s,m) => s + (m.ratingCount||0), 0);
+  const avg = countR ? (totalR / countR) : null;
+
+  $("#statMovies").textContent = total;
+  $("#statGenres").textContent = genresUsed;
+  $("#statReports").textContent = reports;
+  $("#statAvg").textContent = avg !== null ? avg.toFixed(1) : "—";
+
+  // report badges
+  [$("#sideReportCount"), $("#drawerReportCount")].forEach(el => {
+    if(!el) return;
+    el.textContent = reports;
+    el.classList.toggle("hidden", reports === 0);
+  });
+
+  // recent list
+  const recent = allMovies.slice(0, 5);
+  const wrap = $("#recentWrap");
+  if(!recent.length){ wrap.hidden = true; return; }
+  wrap.hidden = false;
+  $("#recentList").innerHTML = recent.map(m => {
+    const a = m.ratingCount ? (m.ratingTotal/m.ratingCount).toFixed(1) : null;
+    return `
+    <div class="mini-item">
+      <img class="thumb" src="${esc(m.poster||"")}" alt="" loading="lazy" onerror="this.src='${fallbackPoster()}'">
+      <div class="info">
+        <h4>${esc(m.title||"Untitled")}</h4>
+        <p>${esc(m.genre||"—")} · ${timeAgo(m.timestamp)}</p>
+      </div>
+      <span class="rating">${a ? `<i class="fa-solid fa-star"></i><b>${a}</b>` : "—"}</span>
+    </div>`;
+  }).join("");
+}
+
+/* ==========================================================================
+   Rendering — Add/Edit form helpers
+   ========================================================================== */
+function renderFormMode(){
+  const isEdit = !!editingId;
+  $("#formTitle").textContent = isEdit ? "Edit Movie" : "Add New Movie";
+  $("#editFlag").classList.toggle("on", isEdit);
+  $("#submitBtn").innerHTML = isEdit
+    ? '<i class="fa-solid fa-check"></i> Update Movie'
+    : '<i class="fa-solid fa-plus"></i> Add Movie';
+  $("#cancelBtn").hidden = !isEdit;
+}
+
+function resetForm(){
+  editingId = null;
+  $("#movieForm").reset();
+  $$("#movieForm .field").forEach(f => { f.classList.remove("err-on"); const i = f.querySelector("input,select,textarea"); if(i) i.classList.remove("err"); });
+  $("#posterPreview").classList.remove("on");
+  hideFormMsg();
+  renderFormMode();
+}
+
+function showFormMsg(text, type){
+  const el = $("#formMsg");
+  el.className = "show " + type;
+  el.innerHTML = `<i class="fa-solid ${type==="success"?"fa-circle-check":"fa-circle-exclamation"}"></i><span>${esc(text)}</span>`;
+}
+function hideFormMsg(){ $("#formMsg").className = ""; $("#formMsg").innerHTML = ""; }
+
+function validateField(input, bad){
+  const field = input.closest(".field");
+  if(field) field.classList.toggle("err-on", bad);
+  input.classList.toggle("err", bad);
+  return !bad;
+}
+
+function readForm(){
+  return {
+    title: $("#fTitle").value.trim(),
+    genre: $("#fGenre").value,
+    poster: $("#fPoster").value.trim(),
+    playUrl: $("#fPlay").value.trim(),
+    downloadUrl: $("#fDownload").value.trim(),
+    description: $("#fDesc").value.trim()
+  };
+}
+function validateForm(){
+  const v = readForm();
+  let ok = true;
+  ok = validateField($("#fTitle"), v.title.length < 1) && ok;
+  ok = validateField($("#fGenre"), !v.genre) && ok;
+  ok = validateField($("#fPoster"), !v.poster) && ok;
+  ok = validateField($("#fPlay"), !v.playUrl) && ok;
+  ok = validateField($("#fDownload"), !v.downloadUrl) && ok;
+  ok = validateField($("#fDesc"), v.description.length < 20) && ok;
+  return ok;
+}
+
+/* Add / Update movie → Firebase */
+async function submitMovie(e){
+  e.preventDefault();
+  hideFormMsg();
+  if(!validateForm()){
+    showFormMsg("Please fix the highlighted fields.", "error");
+    return;
+  }
+  const v = readForm();
+  const btn = $("#submitBtn");
+  const isEdit = !!editingId;
+  setBusy(btn, true, isEdit ? "Updating…" : "Adding…");
+
+  try{
+    if(isEdit){
+      await db.ref("movies/" + editingId).update({
+        ...v,
+        updatedAt: firebase.database.ServerValue.TIMESTAMP
+      });
+      showFormMsg(`"${v.title}" updated successfully.`, "success");
+      toast("Movie updated", "success");
+      // stay in edit mode so admin can keep tweaking
+    }else{
+      await db.ref("movies").push({
+        ...v,
+        timestamp: firebase.database.ServerValue.TIMESTAMP,
+        ratingTotal: 0,
+        ratingCount: 0
+      });
+      showFormMsg(`"${v.title}" added to the library.`, "success");
+      toast("Movie added", "success");
+      resetForm();
+    }
+  }catch(err){
+    console.error(err);
+    showFormMsg("Could not save — check Firebase rules and try again.", "error");
+    toast("Save failed", "error");
+  }finally{
+    setBusy(btn, false);
+    renderFormMode();
+  }
+}
+
+/* Edit → populate form */
+function startEdit(id){
+  const m = allMovies.find(x => x.id === id);
+  if(!m) return;
+  editingId = id;
+  $("#fTitle").value = m.title || "";
+  $("#fGenre").value = m.genre || "";
+  $("#fPoster").value = m.poster || "";
+  $("#fPlay").value = m.playUrl || "";
+  $("#fDownload").value = m.downloadUrl || "";
+  $("#fDesc").value = m.description || "";
+  // poster preview
+  const prev = $("#posterPreview");
+  if(m.poster){ prev.src = m.poster; prev.classList.add("on"); }
+  else prev.classList.remove("on");
+  hideFormMsg();
+  renderFormMode();
+  showPage("movies");
+  $("#movieFormPanel").scrollIntoView({ behavior:"smooth", block:"start" });
+  setTimeout(() => $("#fTitle").focus(), 350);
+}
+
+/* Delete → confirm → Firebase */
+function askDelete(id){
+  const m = allMovies.find(x => x.id === id);
+  if(!m) return;
+  openConfirm(
+    "Delete movie?",
+    `Remove "${m.title}" from the library? This cannot be undone.`,
+    async () => {
+      try{
+        await db.ref("movies/" + id).remove();
+        if(editingId === id) resetForm();
+        toast("Movie deleted", "success");
+      }catch(err){
+        console.error(err);
+        toast("Delete failed — check Firebase rules.", "error");
+      }
+    }
+  );
+}
+
+/* ==========================================================================
+   Rendering — Manage list
+   ========================================================================== */
+function filteredMovies(){
+  let list = allMovies;
+  if(adminGenreFilter !== "All") list = list.filter(m => m.genre === adminGenreFilter);
+  const q = adminSearchQ.trim().toLowerCase();
+  if(q){
+    list = list.filter(m =>
+      (m.title||"").toLowerCase().includes(q) ||
+      (m.genre||"").toLowerCase().includes(q)
+    );
+  }
+  return list;
+}
+
+function renderMovieList(){
+  const list = filteredMovies();
+  const host = $("#movieList");
+  host.setAttribute("aria-busy","false");
+
+  $("#resultNote").textContent =
+    `${list.length} of ${allMovies.length} movie${allMovies.length===1?"":"s"}` +
+    (adminGenreFilter !== "All" ? ` · ${adminGenreFilter}` : "") +
+    (adminSearchQ ? ` · "${adminSearchQ}"` : "");
+
+  if(!allMovies.length){
+    host.innerHTML = emptyHTML("fa-film","No movies yet","Add your first movie using the form above — it will appear here instantly.");
+    return;
+  }
+  if(!list.length){
+    host.innerHTML = emptyHTML("fa-magnifying-glass","No matches","Try a different search term or genre filter.");
+    return;
+  }
+
+  host.innerHTML = list.map(m => {
+    const avg = m.ratingCount ? (m.ratingTotal/m.ratingCount) : null;
+    const desc = (m.description||"").slice(0,100) + ((m.description||"").length > 100 ? "…" : "");
+    return `
+    <article class="mrow" data-id="${m.id}">
+      <img class="thumb" src="${esc(m.poster||"")}" alt="${esc(m.title)} poster" loading="lazy" onerror="this.src='${fallbackPoster()}'">
+      <div class="body">
+        <h4>${esc(m.title||"Untitled")}</h4>
+        <div class="meta">
+          <span class="tag gold">${esc(m.genre||"—")}</span>
+          <span class="tag"><i class="fa-solid fa-star" style="color:var(--accent);font-size:11px"></i>${avg !== null ? avg.toFixed(1) + " · " + m.ratingCount + " rating" + (m.ratingCount===1?"":"s") : "Not rated"}</span>
+          <span class="tag play"><i class="fa-solid fa-play" style="font-size:10px"></i> Play Online</span>
+          <span class="tag dl"><i class="fa-solid fa-download" style="font-size:10px"></i> Download</span>
+          <span class="tag">${timeAgo(m.timestamp)}</span>
+        </div>
+        <p class="desc">${esc(desc || "No description.")}</p>
+        <div class="row-actions">
+          <button class="btn btn-success btn-sm" data-act="edit"><i class="fa-solid fa-pen"></i> Edit</button>
+          <button class="btn btn-danger btn-sm" data-act="delete"><i class="fa-solid fa-trash"></i> Delete</button>
+        </div>
+      </div>
+    </article>`;
+  }).join("");
+
+  // bind row actions
+  $$(".mrow", host).forEach(row => {
+    const id = row.dataset.id;
+    row.querySelector('[data-act="edit"]').addEventListener("click", () => startEdit(id));
+    row.querySelector('[data-act="delete"]').addEventListener("click", () => askDelete(id));
+  });
+}
+
+/* ==========================================================================
+   Rendering — Reports
+   ========================================================================== */
+function renderReports(){
+  const host = $("#reportList");
+  host.setAttribute("aria-busy","false");
+
+  if(!allReports.length){
+    host.innerHTML = emptyHTML("fa-flag","No reports","When users report a broken play or download link, it will appear here.");
+    return;
+  }
+
+  host.innerHTML = allReports.map(r => `
+    <article class="report" data-id="${esc(r.id)}">
+      <div class="r-main">
+        <span class="status-pill open"><i class="fa-solid fa-circle" style="font-size:7px"></i> Open</span>
+        <h4 style="margin-top:10px">${esc(r.movieTitle || "Unknown movie")}</h4>
+        <div class="reason-tag"><i class="fa-solid fa-flag"></i>${esc(r.reason || "Broken link")}</div>
+        <div class="r-meta">
+          <span><b>Movie ID:</b> ${esc(r.movieId || "—")}</span>
+          <span><b>User:</b> ${esc(r.userId || "Anonymous")}</span>
+          <span><b>Time:</b> ${fmtTime(r.timestamp)}</span>
+        </div>
+      </div>
+      <div class="r-actions">
+        <button class="btn btn-success btn-sm" data-act="resolve"><i class="fa-solid fa-check"></i> Resolve</button>
+        <button class="btn btn-ghost btn-sm" data-act="dismiss"><i class="fa-solid fa-xmark"></i> Dismiss</button>
+      </div>
+    </article>
+  `).join("");
+
+  $$(".report", host).forEach(el => {
+    const id = el.dataset.id;
+    el.querySelector('[data-act="resolve"]').addEventListener("click", () => removeReport(id, "Report resolved"));
+    el.querySelector('[data-act="dismiss"]').addEventListener("click", () => removeReport(id, "Report dismissed"));
+  });
+}
+
+async function removeReport(id, msg){
+  try{
+    await db.ref("reports/" + id).remove();
+    toast(msg, "success");
+  }catch(err){
+    console.error(err);
+    toast("Could not update report.", "error");
+  }
+}
+
+/* ==========================================================================
+   Master render
+   ========================================================================== */
+function renderAll(){
+  renderDashboard();
+  renderFormMode();
+  renderMovieList();
+  renderReports();
+}
+
+/* ==========================================================================
+   Confirm dialog
+   ========================================================================== */
+function openConfirm(title, text, onOk){
+  $("#confirmTitle").textContent = title;
+  $("#confirmText").textContent = text;
+  confirmAction = onOk;
+  const ov = $("#confirmModal");
+  ov.hidden = false;
+  void ov.offsetWidth;
+  ov.classList.add("open");
+  document.body.style.overflow = "hidden";
+  setTimeout(() => $("#confirmCancel").focus(), 80);
+}
+function closeConfirm(){
+  const ov = $("#confirmModal");
+  ov.classList.remove("open");
+  document.body.style.overflow = "";
+  setTimeout(() => { ov.hidden = true; }, 250);
+  confirmAction = null;
+}
+function bindConfirm(){
+  $("#confirmCancel").addEventListener("click", closeConfirm);
+  $("#confirmModal").addEventListener("click", e => { if(e.target.id === "confirmModal") closeConfirm(); });
+  $("#confirmOk").addEventListener("click", async () => {
+    const fn = confirmAction;
+    closeConfirm();
+    if(fn) await fn();
+  });
+  document.addEventListener("keydown", e => {
+    if(e.key === "Escape"){
+      if($("#confirmModal").classList.contains("open")) closeConfirm();
+      else if($("#drawer").classList.contains("open")) closeDrawer();
+    }
+  });
+}
+
+/* ==========================================================================
+   Theme
+   ========================================================================== */
+function applyTheme(pref){
+  let mode = pref;
+  if(pref === "system"){
+    mode = window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  }
+  document.documentElement.setAttribute("data-theme", mode);
+  $("#themeQuickBtn").innerHTML = `<i class="${mode==="dark"?"fa-regular fa-moon":"fa-regular fa-sun"}"></i>`;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if(meta) meta.content = mode === "dark" ? "#0B0C0E" : "#F4F5F7";
+}
+function setTheme(pref){
+  localStorage.setItem(THEME_KEY, pref);
+  applyTheme(pref);
+  syncThemeSeg();
+}
+function currentThemePref(){ return localStorage.getItem(THEME_KEY) || "dark"; }
+function syncThemeSeg(){
+  const pref = currentThemePref();
+  $$("#themeSeg button").forEach(b => b.classList.toggle("active", b.dataset.themeOpt === pref));
+}
+function bindTheme(){
+  $("#themeSeg").addEventListener("click", e => {
+    const b = e.target.closest("[data-theme-opt]");
+    if(b) setTheme(b.dataset.themeOpt);
+  });
+  $("#themeQuickBtn").addEventListener("click", () => {
+    const mode = document.documentElement.getAttribute("data-theme");
+    setTheme(mode === "dark" ? "light" : "dark");
+  });
+  window.matchMedia("(prefers-color-scheme: light)").addEventListener?.("change", () => {
+    if(currentThemePref() === "system") applyTheme("system");
+  });
+}
+
+/* ==========================================================================
+   Toast / helpers
+   ========================================================================== */
+function toast(msg, type="info"){
+  const host = $("#toastHost");
+  const icons = { success:"fa-circle-check", error:"fa-circle-exclamation", info:"fa-circle-info" };
+  const el = document.createElement("div");
+  el.className = `toast ${type}`;
+  el.innerHTML = `<i class="fa-solid ${icons[type]||icons.info}"></i><span>${esc(msg)}</span>`;
+  host.appendChild(el);
+  setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 260); }, 3200);
+}
+function esc(s){
+  return String(s == null ? "" : s)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+function setFieldErr(input, bad){
+  const field = input.closest(".field");
+  if(field) field.classList.toggle("err-on", bad);
+  input.classList.toggle("err", bad);
+}
+function setBusy(btn, busy, busyText){
+  if(busy){
+    btn.dataset.orig = btn.innerHTML;
+    btn.innerHTML = `<div class="spinner sm"></div> ${busyText||"Please wait…"}`;
+    btn.disabled = true;
+  }else{
+    if(btn.dataset.orig) btn.innerHTML = btn.dataset.orig;
+    btn.disabled = false;
+  }
+}
+function emptyHTML(icon, title, desc){
+  return `<div class="empty">
+    <i class="fa-solid ${icon}" aria-hidden="true"></i>
+    <h3>${esc(title)}</h3>
+    <p>${esc(desc)}</p>
+  </div>`;
+}
+function timeAgo(ts){
+  if(!ts) return "just now";
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if(s < 60) return "just now";
+  const m = Math.floor(s/60); if(m < 60) return m + "m ago";
+  const h = Math.floor(m/60); if(h < 24) return h + "h ago";
+  const d = Math.floor(h/24); if(d < 30) return d + "d ago";
+  return new Date(ts).toLocaleDateString();
+}
+function fmtTime(ts){
+  if(!ts) return "—";
+  return new Date(ts).toLocaleString(undefined, { dateStyle:"medium", timeStyle:"short" });
+}
+function fallbackPoster(){
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='400' height='600'>
+    <defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'>
+      <stop offset='0' stop-color='%231D2025'/><stop offset='1' stop-color='%23121417'/>
+    </linearGradient></defs>
+    <rect width='400' height='600' fill='url(%23g)'/>
+    <g fill='none' stroke='%23E8A83E' stroke-width='6' stroke-linecap='round'>
+      <rect x='150' y='230' width='100' height='70' rx='8'/>
+      <path d='M250 250 l40 -20 v60 l-40 -20'/>
+      <circle cx='175' cy='265' r='8'/><circle cx='225' cy='265' r='8'/>
+    </g>
+    <text x='200' y='400' text-anchor='middle' fill='%23737982' font-family='monospace' font-size='14'>MovieZen</text>
+  </svg>`;
+  return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+}
+
+/* ==========================================================================
+   Bootstrap
+   ========================================================================== */
+window.addEventListener("DOMContentLoaded", () => {
+  // skeleton in movie list
+  $("#movieList").innerHTML = Array.from({length:4}, () => `
+    <div class="skel-row">
+      <div class="skel-b skel-p"></div>
+      <div class="skel-lines">
+        <div class="skel-b" style="height:20px;width:40%"></div>
+        <div class="skel-b" style="height:16px;width:70%"></div>
+        <div class="skel-b" style="height:16px;width:55%"></div>
+      </div>
+    </div>`).join("");
+
+  applyTheme(currentThemePref());
+  syncThemeSeg();
+  bindTheme();
+  bindAuthForms();
+  bindNav();
+  bindConfirm();
+
+  // movie form
+  $("#movieForm").addEventListener("submit", submitMovie);
+  $("#cancelBtn").addEventListener("click", () => { resetForm(); toast("Edit cancelled", "info"); });
+  $("#fPoster").addEventListener("input", debounce(() => {
+    const url = $("#fPoster").value.trim();
+    const prev = $("#posterPreview");
+    if(url){ prev.src = url; prev.classList.add("on"); }
+    else prev.classList.remove("on");
+  }, 350));
+  $("#fPoster").addEventListener("error", () => $("#posterPreview").classList.remove("on"));
+
+  // admin search / filter
+  $("#adminSearch").addEventListener("input", e => {
+    adminSearchQ = e.target.value;
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(renderMovieList, 200);
+  });
+  $("#genreFilter").addEventListener("change", e => {
+    adminGenreFilter = e.target.value;
+    renderMovieList();
+  });
+
+  // deep-link #movies
+  if(location.hash === "#movies") currentPage = "movies";
+
+  // Firebase
+  const ok = initializeFirebase();
+
+  // hide loading
+  setTimeout(() => {
+    const l = $("#loading");
+    if(l){ l.classList.add("hide"); setTimeout(() => l.remove(), 500); }
+    // apply deep link after app ready
+    if(location.hash === "#movies" && currentUser) showPage("movies");
+  }, ok ? 900 : 400);
+});
+
+function debounce(fn, ms){ let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+</script>
+</body>
+</html>
